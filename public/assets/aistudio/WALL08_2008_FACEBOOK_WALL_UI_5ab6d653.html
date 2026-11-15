@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#3b5998" />
+  <title>WALL/08 — Your little corner of the internet</title>
+  <style>
+    :root { --fb-blue:#3b5998; --fb-blue-dark:#2c4477; --link:#3b5998; --soft-blue:#d8dfea; --line:#d7dce6; --muted:#777e8a; --body:#333; --page:#f8f9fc; --canvas:#fff; }
+    * { box-sizing:border-box; }
+    html {scroll-behavior:smooth;}
+    body { margin:0; color:var(--body); background:#f1f3f7; font:12px/1.45 Tahoma,Arial,Helvetica,sans-serif; }
+    button, input, textarea, select { font:inherit; }
+    button { cursor:pointer; }
+    a { color:var(--link); text-decoration:none; }
+    a:hover { text-decoration:underline; }
+    button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visible {outline:2px solid #ffbf47;outline-offset:2px;}
+    .svg-icon { width:13px;height:13px;vertical-align:-2px;fill:currentColor;stroke:currentColor; }
+    .topbar {height:37px;background:var(--fb-blue);border-bottom:1px solid #243b68;color:#fff;position:sticky;top:0;z-index:40;}
+    .top-inner {max-width:1142px;margin:auto;height:100%;display:flex;align-items:stretch;padding:0 12px;gap:5px;}
+    .brand {font:bold 22px/1 Arial,sans-serif;letter-spacing:-1.25px;color:#fff;align-self:center;margin-right:12px;padding:0 2px 3px;white-space:nowrap;}
+    .brand em {font-style:normal;color:#bbd0f7;font-size:17px;letter-spacing:-1.5px;}
+    .top-links {display:flex;align-items:stretch;}
+    .top-link {display:flex;align-items:center;border:0;background:transparent;color:#f5f7ff;font-size:11px;font-weight:bold;padding:0 10px;text-shadow:0 1px 0 #263e70;white-space:nowrap;}
+    .top-link:hover,.top-link.active {background:#2f497f;text-decoration:none;}
+    .pill-num {font-size:10px;color:#fff;background:#7793c1;padding:0 5px;line-height:16px;border-radius:2px;margin-left:5px;}
+    .top-spacer {flex:1;}
+    .signed {display:flex;align-items:center;color:#c7d6f2;font-size:11px;margin:0 6px;white-space:nowrap;}
+    .top-search {position:relative;width:194px;margin:auto 0;}
+    .top-search input {border:1px solid #263e6e;background:#fff;height:22px;width:100%;padding:0 27px 0 7px;color:#333;border-radius:0;font-size:11px;}
+    .top-search .search-icon {position:absolute;right:0;top:0;height:22px;width:24px;display:flex;align-items:center;justify-content:center;color:#fff;background:#6e89b8;border-left:1px solid #405e93;pointer-events:none;}
+    .page {max-width:1142px;margin:0 auto;background:var(--canvas);min-height:calc(100vh - 37px);padding:25px 12px 35px;box-shadow:0 0 0 1px #e5e8ee;}
+    .layout {display:grid;grid-template-columns:219px minmax(0,1fr) 193px;gap:20px;align-items:start;}
+    .sidebar-left,.sidebar-right,.main-panel {min-width:0;}
+    .profile-photo {border:1px solid #6e7480;background:#b9c2ce;width:100%;aspect-ratio:219/267;display:block;position:relative;overflow:hidden;}
+    .profile-photo svg {width:100%;height:100%;display:block;}
+    .photo-tag {position:absolute;bottom:0;left:0;right:0;padding:5px 8px;color:#eee;background:#111b29b8;font-size:10px;letter-spacing:.1px;}
+    .sidebar-links {margin:4px 0 20px;padding:0;list-style:none;}
+    .sidebar-links li {border-bottom:1px solid #e8ebf0;}
+    .sidebar-links button {font-size:11px;text-align:left;width:100%;background:transparent;border:0;color:var(--link);padding:5px 7px;}
+    .sidebar-links button:hover {background:#eff3fa;text-decoration:underline;}
+    .side-section {margin:0 0 18px;}
+    .section-heading {padding:5px 8px;background:linear-gradient(#f1f3f7,#e8ecf2);border-top:1px solid #bfc8d7;color:#5a6270;font-weight:bold;font-size:11px;}
+    .side-body {padding:8px;font-size:11px;line-height:1.55;}
+    .side-label {display:block;color:#939aa4;font-size:10px;margin-top:6px;}
+    .mutual-row {display:flex;gap:4px;margin:9px 0 3px;}
+    .tiny-avatar {width:36px;height:36px;display:grid;place-items:center;border:1px solid #fff;box-shadow:0 0 0 1px #cfd6e0;font-family:Georgia,serif;font-size:16px;font-weight:bold;}
+    .mutual-row .tiny-avatar:nth-child(1){background:#d8e7f6;color:#45668d;}
+    .mutual-row .tiny-avatar:nth-child(2){background:#eed3c7;color:#99644f;}
+    .mutual-row .tiny-avatar:nth-child(3){background:#ceddd1;color:#5a7d61;}
+    .mutual-row .tiny-avatar:nth-child(4){background:#ded7ed;color:#786295;}
+    .wall-header {display:flex;align-items:end;justify-content:space-between;gap:10px;margin-bottom:10px;}
+    h1 {font: bold 21px/1.2 Arial,sans-serif;margin:0;color:#3b3e45;}
+    .subtitle {font-size:11px;color:#89909e;margin-top:3px;}
+    .visitor-stamp {font-size:10px;color:#8a93a0;white-space:nowrap;padding-bottom:1px;}
+    .tabs {display:flex;gap:2px;border-bottom:1px solid #b8c3d4;padding-left:0;margin-bottom:13px;overflow-x:auto;scrollbar-width:none;}
+    .tabs::-webkit-scrollbar {display:none;}
+    .tab {color:#566f9b;background:#e8edf5;border:1px solid #d7dfea;border-bottom:0;font:bold 12px Arial,sans-serif;padding:8px 15px 7px;margin-bottom:0;white-space:nowrap;}
+    .tab:hover {background:#dce5f2;}
+    .tab.active {color:#333;background:#fff;border-color:#bac5d5;position:relative;z-index:1;}
+    .tab.active::after {content:"";position:absolute;bottom:-2px;height:3px;background:white;left:0;right:0;}
+    .tab-content[hidden] {display:none!important;}
+    .composer {border:1px solid #bbc5d3;background:linear-gradient(#f9fafc,#f4f6f9);padding:9px;margin-bottom:14px;box-shadow:0 1px 2px #0000000b;}
+    .composer textarea {resize:vertical;display:block;width:100%;height:66px;min-height:66px;max-height:220px;padding:9px 10px;background:#fff;border:1px solid #c0c9d6;box-shadow:inset 0 1px 2px #00000010;border-radius:0;outline-offset:0;line-height:1.5;font-size:12px;color:#333;}
+    .composer textarea:focus {border-color:#7892bd;box-shadow:0 0 0 2px #dbe6f6;}
+    .composer textarea::placeholder {color:#999;}
+    .composer-tools {display:flex;align-items:center;gap:8px;justify-content:space-between;margin-top:9px;flex-wrap:wrap;}
+    .tool-left {display:flex;align-items:center;gap:7px;color:#89909d;font-size:11px;}
+    .tool-chip {border:0;padding:2px 3px;background:transparent;color:#5878a8;display:inline-flex;align-items:center;gap:3px;}
+    .tool-chip:hover {background:#e4ebf4;}
+    .tool-chip .svg-icon {color:#a5772d;}
+    .tool-right {display:flex;align-items:center;gap:10px;margin-left:auto;}
+    .privacy {color:#7386a4;font-size:10px;white-space:nowrap;}
+    .privacy .svg-icon {color:#8192ae;}
+    .counter {font-size:10px;color:#8b95a4;min-width:42px;text-align:right;}
+    .counter.low {color:#b35a15;font-weight:bold;}
+    .counter.over {color:#b32132;font-weight:bold;}
+    .btn-share {min-width:72px;height:27px;background:linear-gradient(#6d86ba,#3b5998);border:1px solid #29477c;box-shadow:inset 0 1px 0 #a5b6d5;color:#fff;font:bold 11px Arial,sans-serif;padding:0 12px;text-shadow:0 -1px #2b4575;}
+    .btn-share:hover:not(:disabled) {background:linear-gradient(#6682b6,#314d87);}
+    .btn-share:disabled {filter:grayscale(.45);opacity:.55;cursor:not-allowed;}
+    .feed-toolbar {display:flex;align-items:center;justify-content:space-between;gap:10px;padding:0 0 7px;border-bottom:1px solid #d5dce7;margin-bottom:2px;}
+    .feed-heading {font:bold 11px Arial,sans-serif;color:#77879d;text-transform:uppercase;letter-spacing:.3px;}
+    .feed-order {color:#7d8da4;font-size:10px;}
+    .live-dot {display:inline-block;border-radius:50%;background:#89af74;width:6px;height:6px;margin-right:5px;vertical-align:1px;}
+    .feed {min-height:140px;}
+    .post {display:grid;grid-template-columns:47px minmax(0,1fr);gap:11px;padding:14px 0 13px;border-bottom:1px solid #e5e9ef;animation:post-in .24s ease-out both;}
+    @keyframes post-in {from {opacity:.5;transform:translateY(-4px);} to {opacity:1;transform:translateY(0);}}
+    .post-avatar {width:46px;height:46px;border:1px solid #c5ccd9;display:grid;place-items:center;overflow:hidden;font:bold 17px Georgia,serif;box-shadow:inset 0 0 0 3px #ffffff40;}
+    .post-content {min-width:0;}
+    .post-line {display:flex;align-items:baseline;gap:6px;flex-wrap:wrap;}
+    .post-author {font-weight:bold;color:#3b5998;font-size:12px;}
+    .post-pinned {font-size:9px;text-transform:uppercase;color:#bf9346;font-weight:bold;}
+    .post-message {white-space:pre-wrap;overflow-wrap:anywhere;margin:3px 0 5px;line-height:1.55;font-size:12px;color:#3a3b40;}
+    .post-meta {display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:10px;color:#999faa;}
+    .post-meta button {border:0;background:transparent;color:#607ca9;padding:0 1px;font-size:10px;}
+    .post-meta button:hover {text-decoration:underline;}
+    .post-meta button.is-liked {color:#2b6fb7;font-weight:bold;}
+    .post-meta .dot {color:#b9bdc5;}
+    .comment-box {background:#f1f4f8;padding:7px 9px;margin-top:8px;border:1px solid #e3e9f1;}
+    .comment-row {display:flex;gap:6px;font-size:11px;margin:5px 0;overflow-wrap:anywhere;}
+    .comment-row strong {color:#3b5998;white-space:nowrap;}
+    .comment-entry {display:flex;gap:6px;margin-top:7px;}
+    .comment-entry input {flex:1;min-width:0;border:1px solid #c5d0df;padding:6px;font-size:11px;background:#fff;}
+    .small-btn {border:1px solid #9caec9;background:linear-gradient(#fdfefe,#dce5f0);color:#44608d;font-size:10px;font-weight:bold;padding:4px 8px;}
+    .small-btn:hover {background:#dce8f5;}
+    .empty {padding:35px 20px;text-align:center;color:#8692a3;border-bottom:1px solid #e6e9ef;}
+    .empty strong {display:block;color:#53657f;margin-bottom:4px;}
+    .showing {padding:12px 0 3px;color:#8994a2;font-size:10px;text-align:center;}
+    .aside-heading {color:#8395b4;font:bold 12px Arial,sans-serif;padding:2px 0 8px;border-bottom:1px solid #e6e9ef;margin-bottom:9px;}
+    .ad {padding:0 0 15px;margin-bottom:14px;border-bottom:1px solid #e5e9ef;}
+    .ad-title {color:#4c6999;font-weight:bold;font-size:12px;line-height:1.25;margin-bottom:6px;}
+    .ad-art {width:100%;max-width:154px;height:100px;display:block;border:1px solid #d3dae5;overflow:hidden;margin-bottom:7px;}
+    .ad-art svg {display:block;width:100%;height:100%;}
+    .ad-desc {color:#747b86;font-size:11px;line-height:1.4;}
+    .ad-reaction {font-size:10px;color:#b8bdc7;margin-top:4px;letter-spacing:2px;}
+    .right-stat {font-size:11px;color:#747e8c;margin:9px 0;}
+    .right-stat strong {color:#536a90;}
+    .retro-badge {display:inline-flex;gap:4px;align-items:center;border:1px solid #c7d4e3;color:#627da4;background:#edf2f9;padding:3px 5px;font:bold 10px Arial,sans-serif;margin-top:5px;}
+    .sub-page {border-top:1px solid #b8c3d4;padding-top:14px;min-height:280px;}
+    .sub-page h2 {margin:0 0 9px;font: bold 16px Arial,sans-serif;color:#3b5998;}
+    .info-row {display:grid;grid-template-columns:125px 1fr;gap:10px;padding:9px 4px;border-bottom:1px solid #ebedf2;font-size:11px;}
+    .info-row .info-key {font-weight:bold;color:#8996ac;}
+    .photo-grid {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;}
+    .photo-tile {border:1px solid #d2dae5;padding:4px;background:#fff;}
+    .photo-scene {height:103px;display:grid;place-items:center;font-size:28px;position:relative;overflow:hidden;}
+    .photo-caption {font-size:10px;color:#5975a2;margin-top:4px;}
+    .note {border-bottom:1px solid #e2e7ef;padding:11px 0;}
+    .note-title {color:#3b5998;font-weight:bold;font-size:13px;}
+    .note small {color:#a1a8b3;}
+    .note p {color:#596270;margin:6px 0 0;font-size:11px;}
+    .footer {margin:24px auto 0;max-width:1142px;padding-top:12px;border-top:1px solid #e1e5ec;display:flex;gap:12px;justify-content:space-between;align-items:center;color:#a1a8b3;font-size:10px;flex-wrap:wrap;}
+    .footer strong {color:#657fa8;}
+    .footer-actions {display:flex;gap:11px;}
+    .footer button {color:#6d85aa;background:transparent;border:0;padding:0;font-size:10px;}
+    .toast {position:fixed;left:50%;bottom:22px;transform:translateX(-50%) translateY(20px);opacity:0;background:#fffde7;border:1px solid #d8cf91;padding:10px 14px;color:#676044;box-shadow:0 5px 18px #273b581c;z-index:60;pointer-events:none;transition:opacity .2s,transform .2s;max-width:calc(100% - 30px);font-size:11px;}
+    .toast.show {opacity:1;transform:translateX(-50%) translateY(0);}
+    .mobile-profile-toggle {display:none;}
+    .name-pop {border:1px solid #c2cedf;background:#eef2f9;padding:8px 9px;color:#526989;font-size:10px;margin:0 0 10px;}
+    .name-pop strong {color:#3b5998;}
+    .user-input {width:100%;padding:7px 8px;border:1px solid #bac7d8;border-radius:0;background:white;font-size:11px;}
+    .subtle-action {border:0;background:none;color:#3b5998;font-weight:bold;padding:3px 0;font-size:11px;}
+    .subtle-action:hover {text-decoration:underline;}
+    @media (max-width: 980px) { .layout{grid-template-columns:190px minmax(0,1fr);gap:17px;} .sidebar-right{display:none;} .page{padding-top:18px;} .signed{display:none;} .profile-photo{aspect-ratio:219/245;} }
+    @media (max-width: 680px) { body{background:#fff;} .topbar{height:42px;} .top-inner{padding:0 10px;gap:3px;} .brand{font-size:19px;margin-right:4px;} .brand em{font-size:14px;} .top-link{font-size:10px;padding:0 6px;} .top-search{width:108px;} .top-search input{font-size:10px;} .page{padding:16px 12px 25px;min-height:calc(100vh - 42px);box-shadow:none;} .layout{display:flex;flex-direction:column;gap:0;} .sidebar-left{order:2;width:100%;border-top:1px solid #dce1e9;padding-top:14px;margin-top:20px;} .main-panel{order:1;width:100%;} .profile-photo{width:96px;height:100px;aspect-ratio:auto;float:left;margin:0 12px 10px 0;} .photo-tag{font-size:8px;padding:3px;} .sidebar-links{margin:0 0 18px;overflow:hidden;} .side-section{clear:both;} .wall-header{align-items:start;} .visitor-stamp{display:none;} .photo-grid{grid-template-columns:repeat(2,minmax(0,1fr));} .footer{margin-top:15px;} }
+    @media(max-width:430px) { .top-search{display:none;} .brand{font-size:18px;} .tab{padding:8px 12px;} .composer-tools{gap:5px;} .privacy{display:none;} .tool-left{gap:4px;} .tool-right{gap:6px;} .post{grid-template-columns:40px minmax(0,1fr);gap:9px;} .post-avatar{width:40px;height:40px;} .subtitle{max-width:260px;} }
+    @media(prefers-reduced-motion:reduce) {*,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;transition-duration:.01ms!important;}}
+  </style>
+</head>
+<body>
+  <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" style="position:absolute;width:0;height:0;overflow:hidden">
+    <symbol id="ico-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.8" fill="none" stroke="currentColor" stroke-width="2.3"/><path d="m15.8 15.8 5 5" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"/></symbol>
+    <symbol id="ico-lock" viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="11" rx="1"/><path d="M8 10V7a4 4 0 0 1 8 0v3" fill="none" stroke="currentColor" stroke-width="2"/></symbol>
+    <symbol id="ico-photo" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="18" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="8" cy="9" r="2"/><path d="m4 19 6-7 4 4 3-3 4 5" fill="none" stroke="currentColor" stroke-width="1.7"/></symbol>
+    <symbol id="ico-smile" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="8.5" cy="9" r="1.2"/><circle cx="15.5" cy="9" r="1.2"/><path d="M7 14a5 5 0 0 0 10 0" fill="none" stroke="currentColor" stroke-width="1.5"/></symbol>
+  </svg>
+  <header class="topbar">
+    <div class="top-inner">
+      <a href="#" id="brand" class="brand" aria-label="Wall 08 Home">wall<em>/08</em></a>
+      <nav class="top-links" aria-label="Primary">
+        <button class="top-link active" data-go="wall">Home</button>
+        <button class="top-link" data-go="info">Profile</button>
+        <button class="top-link" data-go="photos">Friends</button>
+        <button class="top-link" data-go="notes">Inbox <span class="pill-num">2</span></button>
+      </nav>
+      <div class="top-spacer"></div>
+      <span class="signed" id="top-greeting">Hello, Visitor</span>
+      <label class="top-search" aria-label="Search wall posts">
+        <input id="search" type="search" placeholder="Search the Wall" autocomplete="off" />
+        <span class="search-icon"><svg class="svg-icon" aria-hidden="true"><use href="#ico-search"></use></svg></span>
+      </label>
+    </div>
+  </header>
+
+  <div class="page" id="top">
+    <div class="layout">
+      <aside class="sidebar-left" aria-label="Profile and information">
+        <div class="profile-photo" role="img" aria-label="Illustrated monochrome photograph of a person wearing headphones at a computer">
+          <svg viewBox="0 0 219 267" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid slice">
+            <defs><linearGradient id="picBg" x1="0" x2="1" y1="0" y2="1"><stop stop-color="#d7d7d7"/><stop offset=".5" stop-color="#878c94"/><stop offset="1" stop-color="#343a42"/></linearGradient><radialGradient id="light" cx="40%" cy="35%" r="80%"><stop stop-color="#f7f7f7" stop-opacity=".65"/><stop offset="1" stop-color="#12181b" stop-opacity="0"/></radialGradient><pattern id="grain" width="8" height="8" patternUnits="userSpaceOnUse"><circle cx="2" cy="3" r=".4" fill="#fff" opacity=".35"/><circle cx="6" cy="6" r=".5" fill="#000" opacity=".28"/></pattern></defs>
+            <rect width="219" height="267" fill="url(#picBg)"/>
+            <path d="M-10 49 70 16 95 58 14 98Z" fill="#32383c" opacity=".5"/><path d="M147-20 245 9 222 121 171 89Z" fill="#d4d7d8" opacity=".35"/>
+            <rect width="219" height="267" fill="url(#light)"/>
+            <path d="M10 267Q29 185 74 178L153 182Q203 202 225 267Z" fill="#22282c"/>
+            <path d="M65 181 107 229 144 183 131 168 82 166Z" fill="#d3d3d3"/>
+            <path d="M59 181Q97 196 107 211Q131 196 152 183L165 267H42Z" fill="#40474c"/>
+            <path d="M71 82Q69 46 104 43Q143 43 147 87L145 133Q141 171 108 179Q81 173 72 138Z" fill="#c5c5c5"/>
+            <path d="M70 114Q53 88 65 63Q77 42 98 42Q126 24 151 56Q158 68 150 100Q144 87 135 85Q105 92 80 76Q82 99 70 114Z" fill="#33383d"/>
+            <path d="M78 102Q95 95 104 100M117 100Q133 95 140 100" stroke="#4c5153" stroke-width="3" fill="none"/>
+            <ellipse cx="93" cy="108" rx="2.4" ry="3.1" fill="#373a3d"/><ellipse cx="128" cy="107" rx="2.4" ry="3.1" fill="#373a3d"/>
+            <path d="M109 105 105 132 114 134" fill="none" stroke="#787878" stroke-width="2"/>
+            <path d="M96 146Q111 154 127 144" fill="none" stroke="#5d5d5d" stroke-width="2.5" stroke-linecap="round"/>
+            <path d="M64 98Q55 91 56 72Q58 49 78 42M151 94Q161 64 139 43" fill="none" stroke="#24292d" stroke-width="9" stroke-linecap="round"/>
+            <rect x="55" y="88" width="11" height="44" rx="5" fill="#40474c"/><rect x="148" y="89" width="11" height="44" rx="5" fill="#40474c"/>
+            <path d="M15 233Q67 222 100 247L122 267H0Z" fill="#1c2126" opacity=".9"/>
+            <rect width="219" height="267" fill="url(#grain)"/>
+          </svg>
+          <div class="photo-tag">profile_photo_2008.jpg</div>
+        </div>
+        <ul class="sidebar-links">
+          <li><button data-go="photos">View Photos of the Wall (24)</button></li>
+          <li><button data-go="info">View Info</button></li>
+          <li><button id="write-wall">Write on this Wall</button></li>
+          <li><button id="poke">Poke the Wall</button></li>
+          <li><button id="copy-link">Share this Page</button></li>
+        </ul>
+        <section class="side-section">
+          <div class="section-heading">Information</div>
+          <div class="side-body">
+            <span class="side-label">Networks:</span> The Internet<br />Web 2.0 Enthusiasts
+            <span class="side-label">Member Since:</span> February 2008
+            <span class="side-label">Currently:</span> Online, probably on dial-up
+            <span class="side-label">About:</span> A public wall for little thoughts, big nostalgia, and everything in between.
+          </div>
+        </section>
+        <section class="side-section">
+          <div class="section-heading">Mutual Friends <span style="float:right;font-weight:normal;color:#8994a6;">See All</span></div>
+          <div class="side-body">
+            <div class="mutual-row" aria-label="Sample friend avatars"><span class="tiny-avatar">A</span><span class="tiny-avatar">J</span><span class="tiny-avatar">M</span><span class="tiny-avatar">S</span></div>
+            <a href="#" data-go="photos">4 friends in common</a><br/>This page is better with company.
+          </div>
+        </section>
+      </aside>
+
+      <main class="main-panel" id="main-content">
+        <div class="wall-header">
+          <div><h1>The Community Wall</h1><div class="subtitle">A little corner of the internet, just like it was in 2008.</div></div>
+          <div class="visitor-stamp">Established 2008 &nbsp;·&nbsp; <span id="post-count">0</span> wall posts</div>
+        </div>
+        <div class="tabs" role="tablist" aria-label="Wall sections">
+          <button class="tab active" role="tab" aria-selected="true" data-tab="wall">Wall</button>
+          <button class="tab" role="tab" aria-selected="false" data-tab="info">Info</button>
+          <button class="tab" role="tab" aria-selected="false" data-tab="photos">Photos</button>
+          <button class="tab" role="tab" aria-selected="false" data-tab="notes">Notes</button>
+          <button class="tab" role="tab" aria-selected="false" data-tab="boxes">Boxes</button>
+        </div>
+        <section class="tab-content" id="panel-wall" role="tabpanel">
+          <div class="name-pop">Posting as <strong id="name-preview">Visitor</strong> &nbsp;·&nbsp; <button class="subtle-action" id="edit-name">Change display name</button>
+            <div id="name-controls" hidden style="display:none;gap:6px;margin-top:7px;"><input class="user-input" id="nickname" type="text" maxlength="24" placeholder="Your name (up to 24 characters)" style="flex:1;"/><button class="small-btn" id="save-name">Save</button></div>
+          </div>
+          <form class="composer" id="composer-form">
+            <textarea id="message" maxlength="280" aria-label="Write a wall post" placeholder="What's on your mind?" required></textarea>
+            <div class="composer-tools">
+              <div class="tool-left"><span>Attach:</span><button class="tool-chip" id="mood-button" title="Insert a smiley" type="button"><svg class="svg-icon"><use href="#ico-smile"></use></svg> Feeling</button><span style="color:#bec5d0;">|</span><span style="color:#8995a5;">Text update</span></div>
+              <div class="tool-right"><span class="privacy"><svg class="svg-icon"><use href="#ico-lock"></use></svg> Everyone</span><span class="counter" id="counter" aria-live="polite">280 left</span><button class="btn-share" id="share" type="submit" disabled>Share</button></div>
+            </div>
+          </form>
+          <div class="feed-toolbar"><span class="feed-heading">Recent Activity</span><span class="feed-order"><span class="live-dot"></span>Newest first · latest 50</span></div>
+          <div class="feed" id="feed" aria-live="polite"></div>
+          <div class="showing" id="showing"></div>
+        </section>
+        <section class="tab-content sub-page" id="panel-info" role="tabpanel" hidden>
+          <h2>Basic Information</h2>
+          <div class="info-row"><span class="info-key">Name</span><span>WALL/08 Community</span></div>
+          <div class="info-row"><span class="info-key">Founded</span><span>2008 (at least in spirit)</span></div>
+          <div class="info-row"><span class="info-key">Website</span><span>This little piece of the internet</span></div>
+          <div class="info-row"><span class="info-key">Favorite Things</span><span>Status updates, photo albums, pokes, compact navigation, and blue hyperlinks.</span></div>
+          <div class="info-row"><span class="info-key">What is this?</span><span>A nostalgic frontend prototype inspired by the era of social walls. Posts are stored in this browser for now; Supabase integration comes next.</span></div>
+          <h2 style="margin-top:23px;">Personal Information</h2>
+          <p style="font-size:11px;color:#5c6573;max-width:460px;">No account needed. Pick any display name, leave a note, and enjoy the early-web atmosphere. Your name is not verified.</p>
+        </section>
+        <section class="tab-content sub-page" id="panel-photos" role="tabpanel" hidden>
+          <h2>Photo Albums <span style="color:#a0a9b7;font:normal 11px Tahoma,Arial,sans-serif;">(3 albums)</span></h2>
+          <p style="font-size:11px;color:#7c8796;margin-bottom:15px;">A few snapshots from the simpler days of the web.</p>
+          <div class="photo-grid">
+            <div class="photo-tile"><div class="photo-scene" style="background:linear-gradient(160deg,#adcadf,#f4d4a3);">📷</div><div class="photo-caption">Summer '08 — 12 photos</div></div>
+            <div class="photo-tile"><div class="photo-scene" style="background:linear-gradient(160deg,#cad4ee,#d0a9b7);">💿</div><div class="photo-caption">My Computer — 8 photos</div></div>
+            <div class="photo-tile"><div class="photo-scene" style="background:linear-gradient(160deg,#b6d8d0,#e5d2af);">🌴</div><div class="photo-caption">Weekend Away — 4 photos</div></div>
+          </div>
+        </section>
+        <section class="tab-content sub-page" id="panel-notes" role="tabpanel" hidden>
+          <h2>Notes</h2>
+          <article class="note"><div class="note-title">A quick note about this place</div><small>Posted a long time ago</small><p>Welcome to WALL/08. Leave a message, say hi to someone, or tell us what you miss about the early internet.</p></article>
+          <article class="note"><div class="note-title">The rules of the Wall</div><small>Updated for the modern web</small><p>Be kind, avoid sharing personal details, and keep posts under 280 characters. Good conversations don't need an algorithm.</p></article>
+        </section>
+        <section class="tab-content sub-page" id="panel-boxes" role="tabpanel" hidden>
+          <h2>Boxes</h2>
+          <div class="section-heading">Wall Guestbook</div><div class="side-body" style="border:1px solid #e4e8ee;border-top:0;">You've found a tiny guestbook on the internet. <button class="subtle-action" data-go="wall">Sign the Wall →</button></div>
+          <div class="section-heading" style="margin-top:16px;">Wall Stats</div><div class="side-body" style="border:1px solid #e4e8ee;border-top:0;">Local posts: <strong id="box-count">0</strong><br/>Character limit: <strong>280</strong><br/>Theme: <strong>Forever 2008</strong></div>
+        </section>
+      </main>
+
+      <aside class="sidebar-right" aria-label="Retro advertisements and activity">
+        <div class="aside-heading">Advertise</div>
+        <div class="ad">
+          <div class="ad-title">Scuba Diving Vacations</div>
+          <div class="ad-art" role="img" aria-label="Retro underwater illustration">
+            <svg viewBox="0 0 154 100" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="sea" x2="0" y2="1"><stop stop-color="#97d7ed"/><stop offset=".45" stop-color="#168cb6"/><stop offset="1" stop-color="#174b76"/></linearGradient></defs><rect width="154" height="100" fill="url(#sea)"/><path d="M0 17Q35 23 65 16T154 18" stroke="#d8faff" fill="none" opacity=".55"/><path d="M0 75Q40 60 78 85T154 75V100H0Z" fill="#126c79"/><path d="M22 88Q15 67 31 52M39 91Q46 70 39 58M114 100Q105 73 125 62" stroke="#80c0a8" stroke-width="4" fill="none"/><ellipse cx="101" cy="45" rx="24" ry="12" fill="#c8e3e5"/><path d="m122 45 18-14v28Z" fill="#a8d7db"/><circle cx="92" cy="42" r="2" fill="#124660"/><path d="M55 37Q63 32 72 37L82 44 72 50Q61 53 55 46Z" fill="#fed79d"/><circle cx="63" cy="40" r="1.4" fill="#2a5964"/><circle cx="21" cy="39" r="3" stroke="#d9fbff" fill="none"/><circle cx="31" cy="29" r="2" stroke="#d9fbff" fill="none"/></svg>
+          </div>
+          <div class="ad-desc">Dive or snorkel with unforgettable sea life. The vacation your desktop wallpaper deserves!</div><div class="ad-reaction">♧ ♡ ◇</div>
+        </div>
+        <div class="ad">
+          <div class="ad-title">Free Desktop Wallpapers!</div>
+          <div class="ad-art" role="img" aria-label="Retro landscape desktop wallpaper graphic">
+            <svg viewBox="0 0 154 100" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="sky" x2="0" y2="1"><stop stop-color="#50a3dd"/><stop offset="1" stop-color="#d3eafb"/></linearGradient></defs><rect width="154" height="100" fill="url(#sky)"/><circle cx="113" cy="28" r="15" fill="#ffeebb"/><path d="M0 77 39 45 65 66 98 33 154 79V100H0" fill="#7fa3bc"/><path d="M0 88 36 69 83 82 113 61 154 78V100H0" fill="#4f8e78"/><path d="M0 91Q67 70 154 95V100H0" fill="#76b28b"/></svg>
+          </div>
+          <div class="ad-desc">Give your computer a fresh look. Available in 1024 × 768!</div><div class="ad-reaction">♧ ♡ ◇</div>
+        </div>
+        <div class="ad">
+          <div class="ad-title">Make Your Own Mixtape</div>
+          <div class="ad-art" role="img" aria-label="Illustrated cassette tape">
+            <svg viewBox="0 0 154 100" xmlns="http://www.w3.org/2000/svg"><rect width="154" height="100" fill="#e4d8c8"/><rect x="24" y="17" width="106" height="66" rx="5" fill="#333e54" stroke="#192437" stroke-width="3"/><rect x="31" y="25" width="92" height="33" fill="#f2c898"/><rect x="42" y="32" width="69" height="17" fill="#e1e4e4"/><circle cx="60" cy="40" r="7" stroke="#495b74" stroke-width="4" fill="#e1e4e4"/><circle cx="95" cy="40" r="7" stroke="#495b74" stroke-width="4" fill="#e1e4e4"/><path d="m43 76 9-10h51l9 10" stroke="#9dabba" stroke-width="3" fill="none"/></svg>
+          </div>
+          <div class="ad-desc">The songs you love, in the order you choose. Some things never go out of style.</div><div class="ad-reaction">♧ ♡ ◇</div>
+        </div>
+        <div class="aside-heading">Wall Activity</div>
+        <div class="right-stat"><strong id="right-post-count">0</strong> notes on the wall</div>
+        <div class="right-stat">The internet is better when you say hello.</div>
+        <span class="retro-badge">✦ MADE FOR NOSTALGIA</span>
+      </aside>
+    </div>
+    <footer class="footer"><span><strong>wall/08</strong> © 2008–2026 &nbsp; · &nbsp; Inspired by the early social web</span><span class="footer-actions"><button data-go="info">About</button><button data-go="notes">Notes</button><button id="footer-top">Back to top ↑</button><span>LOCAL UI PROTOTYPE</span></span></footer>
+  </div>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script>
+    (() => {
+      'use strict';
+      // Standalone UI demo. Swap these localStorage calls for a Supabase PostService in the backend phase.
+      const $ = (s, root = document) => root.querySelector(s);
+      const $$ = (s, root = document) => Array.from(root.querySelectorAll(s));
+      const POSTS_KEY = 'wall08.posts.v1';
+      const NAME_KEY = 'wall08.name.v1';
+      const LIKES_KEY = 'wall08.likes.v1';
+      const now = Date.now();
+      const samplePosts = [
+        {id:'sample-1',author:'Amy Chen',message:'Does anyone else remember customizing their profile and picking a favorite song? I miss the old internet. 💙',created_at:new Date(now-13*60*1000).toISOString(),likes:8,comments:[{author:'Jordan Bailey',text:'The profile songs!! Absolute classics.'}]},
+        {id:'sample-2',author:'Jordan Bailey',message:'Found this page by accident. It feels like opening a time capsule. Who wants to be my top friend? 😄',created_at:new Date(now-71*60*1000).toISOString(),likes:5,comments:[]},
+        {id:'sample-3',author:'Elliot Moore',message:'Currently listening to music on Winamp and pretending it’s 2008. Some things never get old.',created_at:new Date(now-7*60*60*1000).toISOString(),likes:13,comments:[{author:'Taylor Reed',text:'The visualizer was everything.'}]},
+        {id:'sample-4',author:'Taylor Reed',message:'First post on the Wall! Leave a note for the next person who finds this place.',created_at:new Date(now-28*60*60*1000).toISOString(),likes:3,comments:[]}
+      ];
+      function storedJSON(key, fallback) {try {const raw=localStorage.getItem(key);return raw?JSON.parse(raw):fallback;}catch {return fallback;}}
+      function persist(key, value) {try {localStorage.setItem(key,JSON.stringify(value));}catch {toast('Browser storage is unavailable. Your changes may not survive a refresh.');}}
+      let posts = storedJSON(POSTS_KEY, null);
+      if(!Array.isArray(posts)) {posts=samplePosts;persist(POSTS_KEY,posts);}
+      let name = storedJSON(NAME_KEY, 'Visitor');
+      if(typeof name !== 'string' || !name.trim()) name='Visitor';
+      let likedIds = storedJSON(LIKES_KEY, []);
+      if(!Array.isArray(likedIds)) likedIds=[];
+      let search = '';
+      let activeTab = 'wall';
+      const expanded = new Set();
+      let toastTimeout;
+      const escapeHTML = v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+      const initials = s=>String(s||'?').trim().split(/\s+/).slice(0,2).map(w=>w[0]||'').join('').toUpperCase();
+      function avatarColors(s){const palette=[['#dbe8f6','#4a6996'],['#ecd6ce','#93634c'],['#d8ead9','#557e62'],['#e2d9ee','#806ba1'],['#f2e8c9','#9b7d47'],['#d4e9e8','#3e8182']];let sum=0;for(let i=0;i<s.length;i++)sum+=s.charCodeAt(i);return palette[sum%palette.length];}
+      function timeAgo(date) { const d=new Date(date),ms=Date.now()-d.getTime(); if(!Number.isFinite(ms))return 'Recently';if(ms<60000)return 'Just now';if(ms<3600000)return Math.floor(ms/60000)+' minutes ago';if(ms<86400000)return 'Today at '+d.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'});if(ms<172800000)return 'Yesterday at '+d.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'});return d.toLocaleDateString([],{month:'long',day:'numeric',year:'numeric'}); }
+      function toast(message) { const t=$('#toast');t.textContent=message;t.classList.add('show');clearTimeout(toastTimeout);toastTimeout=setTimeout(()=>t.classList.remove('show'),2600); }
+      function updateName(){$('#name-preview').textContent=name;$('#top-greeting').textContent='Hello, '+name;$('#nickname').value=name;}
+      function updateCount(){const n=posts.length;$('#post-count').textContent=n;$('#box-count').textContent=n;$('#right-post-count').textContent=n;}
+      function renderPost(p) {
+        const colors=avatarColors(p.author);const liked=likedIds.includes(p.id);const comments=Array.isArray(p.comments)?p.comments:[];
+        const commentsHTML = expanded.has(p.id) ? `<div class="comment-box">${comments.map(c=>`<div class="comment-row"><strong>${escapeHTML(c.author)}</strong><span>${escapeHTML(c.text)}</span></div>`).join('')||'<div style="color:#8693a6;font-size:10px;">No comments yet. Start the conversation.</div>'}<form class="comment-entry" data-comment-form="${escapeHTML(p.id)}"><input name="comment" aria-label="Write a comment" maxlength="140" placeholder="Write a comment..." required/><button class="small-btn" type="submit">Post</button></form></div>` : '';
+        return `<article class="post" data-post-id="${escapeHTML(p.id)}"><div class="post-avatar" style="background:${colors[0]};color:${colors[1]};">${escapeHTML(initials(p.author))}</div><div class="post-content"><div class="post-line"><span class="post-author">${escapeHTML(p.author)}</span>${p.id.startsWith('sample-')?'<span class="post-pinned">Community</span>':''}</div><div class="post-message">${escapeHTML(p.message)}</div><div class="post-meta"><span title="${escapeHTML(new Date(p.created_at).toLocaleString())}">${escapeHTML(timeAgo(p.created_at))}</span><span class="dot">·</span><button data-like="${escapeHTML(p.id)}" class="${liked?'is-liked':''}" aria-label="${liked?'Unlike':'Like'} post by ${escapeHTML(p.author)}">${liked?'Unlike':'Like'}${p.likes?' ('+Number(p.likes)+')':''}</button><span class="dot">·</span><button data-comments="${escapeHTML(p.id)}">Comment${comments.length?' ('+comments.length+')':''}</button></div>${commentsHTML}</div></article>`;
+      }
+      function render() {
+        const q=search.trim().toLowerCase();const filtered=posts.slice().sort((a,b)=>new Date(b.created_at)-new Date(a.created_at)).filter(p=>!q||(p.author+' '+p.message).toLowerCase().includes(q)).slice(0,50);
+        $('#feed').innerHTML=filtered.map(renderPost).join('') || `<div class="empty"><strong>${q?'No matching posts':'No posts yet'}</strong>${q?'Try another search.':'Be the first to write on the Wall!'}</div>`;
+        $('#showing').textContent=q?`Showing ${filtered.length} matching posts`:`Showing ${filtered.length} of ${posts.length} wall posts · Stored locally in this browser`;
+        updateCount();
+      }
+      function setTab(tab){if(!['wall','info','photos','notes','boxes'].includes(tab))tab='wall';activeTab=tab;$$('[data-tab]').forEach(el=>{const on=el.dataset.tab===tab;el.classList.toggle('active',on);el.setAttribute('aria-selected',String(on));});$$('.tab-content').forEach(el=>el.hidden=el.id!==`panel-${tab}`);$$('.top-link').forEach(el=>el.classList.toggle('active',el.dataset.go===tab||(tab==='wall'&&el.dataset.go==='wall')));if(tab==='wall')render();$('#main-content').scrollIntoView({block:'start',behavior:'smooth'});}
+      function updateComposer(){let count=$('#message').value.length;const counter=$('#counter');counter.textContent=(280-count)+' left';counter.classList.toggle('low',count>=250);counter.classList.toggle('over',count>280);$('#share').disabled=!$('#message').value.trim()||count>280;}
+      $('#message').addEventListener('input',updateComposer);
+      $('#message').addEventListener('keydown',e=>{if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)){e.preventDefault();$('#composer-form').requestSubmit();}});
+      $('#composer-form').addEventListener('submit',e=>{e.preventDefault();const message=$('#message').value.trim();if(!message||message.length>280){toast('Please write a message under 280 characters.');return;}const id=globalThis.crypto?.randomUUID?.()||String(Date.now())+'-'+Math.random().toString(36).slice(2);posts.unshift({id,author:name.slice(0,24),message,created_at:new Date().toISOString(),likes:0,comments:[]});persist(POSTS_KEY,posts);$('#message').value='';updateComposer();search='';$('#search').value='';render();toast('Posted to the Wall!');});
+      $('#feed').addEventListener('click',e=>{const like=e.target.closest('[data-like]');const comment=e.target.closest('[data-comments]');if(like){const id=like.dataset.like;const p=posts.find(p=>p.id===id);if(!p)return;const liked=likedIds.includes(id);p.likes=Math.max(0,(p.likes||0)+(liked?-1:1));likedIds=liked?likedIds.filter(v=>v!==id):[...likedIds,id];persist(LIKES_KEY,likedIds);persist(POSTS_KEY,posts);render();}if(comment){const id=comment.dataset.comments;if(expanded.has(id))expanded.delete(id);else expanded.add(id);render();}});
+      $('#feed').addEventListener('submit',e=>{const form=e.target.closest('[data-comment-form]');if(!form)return;e.preventDefault();const input=$('input[name="comment"]',form);const text=input.value.trim();if(!text||text.length>140)return;const p=posts.find(p=>p.id===form.dataset.commentForm);if(!p)return;if(!Array.isArray(p.comments))p.comments=[];p.comments.push({author:name,text});persist(POSTS_KEY,posts);expanded.add(p.id);render();toast('Comment added!');});
+      $$('.tab').forEach(el=>el.addEventListener('click',()=>setTab(el.dataset.tab)));
+      $$('[data-go]').forEach(el=>el.addEventListener('click',e=>{e.preventDefault();setTab(el.dataset.go);}));
+      $('#brand').addEventListener('click',e=>{e.preventDefault();setTab('wall');window.scrollTo({top:0,behavior:'smooth'});});
+      $('#search').addEventListener('input',e=>{search=e.target.value;setTab('wall');});
+      $('#write-wall').addEventListener('click',()=>{setTab('wall');setTimeout(()=>$('#message').focus(),150);});
+      $('#edit-name').addEventListener('click',()=>{const el=$('#name-controls');const show=el.hidden;el.hidden=!show;el.style.display=show?'flex':'none';if(show)$('#nickname').focus();});
+      function saveName(){const next=$('#nickname').value.trim().replace(/\s+/g,' ').slice(0,24);if(!next){toast('Please enter a display name.');return;}name=next;persist(NAME_KEY,name);updateName();$('#name-controls').hidden=true;$('#name-controls').style.display='none';toast('You are now posting as '+name);}
+      $('#save-name').addEventListener('click',saveName);
+      $('#nickname').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();saveName();}});
+      $('#mood-button').addEventListener('click',()=>{const input=$('#message');if(input.value.length+2<=280){input.value+=(input.value?' ':'')+':)';updateComposer();input.focus();}});
+      $('#poke').addEventListener('click',()=>toast('You poked the Wall! 👈 Just like old times.'));
+      $('#copy-link').addEventListener('click',async()=>{try{await navigator.clipboard.writeText(location.href);toast('Page link copied!');}catch{toast('Copy the URL from your browser to share.');}});
+      $('#footer-top').addEventListener('click',()=>window.scrollTo({top:0,behavior:'smooth'}));
+      updateName();updateComposer();render();
+    })();
+  </script>
+</body>
+</html>
