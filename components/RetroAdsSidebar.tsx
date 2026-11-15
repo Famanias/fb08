@@ -1,5 +1,6 @@
 'use client';
 
+import { WALL_CAPABILITIES } from '@/features/wall/capabilities';
 import { MixtapeAdSvg, ScubaAdSvg, WallpaperAdSvg } from './RetroArtwork';
 
 interface RetroAdsSidebarProps {
@@ -59,7 +60,8 @@ export function RetroAdsSidebar({ postCount }: RetroAdsSidebarProps) {
 
       <div className="aside-heading">Wall Activity</div>
       <div className="right-stat">
-        <strong id="right-post-count">{postCount}</strong> notes on the wall
+        <strong id="right-post-count">{postCount}</strong>{' '}
+        {WALL_CAPABILITIES.isLocalPreview ? 'notes on the wall' : 'loaded wall notes'}
       </div>
       <div className="right-stat">
         The internet is better when you say hello.

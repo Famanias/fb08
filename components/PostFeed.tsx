@@ -17,10 +17,12 @@ interface PostFeedProps {
   searchQuery: string;
   onSearchChange: (value: string) => void;
   isLoading: boolean;
+  errorMessage: string | null;
   connectionStatus: WallConnectionStatus;
   demoInteractions: DemoInteractionsState;
   onToggleLike: (postId: string) => { ok: boolean; error?: string };
   onAddComment: (postId: string, text: string) => { ok: boolean; error?: string };
+  onRetry: () => void;
   onNotify: (message: string) => void;
 }
 
@@ -30,10 +32,12 @@ export function PostFeed({
   searchQuery,
   onSearchChange,
   isLoading,
+  errorMessage,
   connectionStatus,
   demoInteractions,
   onToggleLike,
   onAddComment,
+  onRetry,
   onNotify,
 }: PostFeedProps) {
   const [expandedPostIds, setExpandedPostIds] = useState<string[]>([]);
@@ -102,7 +106,9 @@ export function PostFeed({
         {isLoading ? (
           <div className="empty">
             <strong>Loading the Wall…</strong>
-            Checking local browser notes.
+            {WALL_CAPABILITIES.isLocalPreview
+              ? 'Checking local browser notes.'
+              : 'Loading latest wall posts.'}
           </div>
         ) : posts.length > 0 ? (
           posts.map((post) => (
@@ -119,6 +125,14 @@ export function PostFeed({
               onAddComment={handleAddComment}
             />
           ))
+        ) : errorMessage && !trimmedSearch ? (
+          <div className="empty" role="alert">
+            <strong>Unable to load the Wall</strong>
+            <div style={{ marginBottom: '10px' }}>{errorMessage}</div>
+            <button type="button" className="small-btn" onClick={onRetry}>
+              Retry
+            </button>
+          </div>
         ) : (
           <div className="empty">
             <strong>
@@ -135,8 +149,10 @@ export function PostFeed({
         {trimmedSearch
           ? `Showing ${posts.length} matching ${
               posts.length === 1 ? 'post' : 'posts'
-            }`
-          : `Showing ${posts.length} of ${totalCount} wall posts · Local preview stored in this browser`}
+            }${WALL_CAPABILITIES.isLocalPreview ? '' : ` (from latest ${totalCount} loaded)`}`
+          : WALL_CAPABILITIES.isLocalPreview
+            ? `Showing ${posts.length} of ${totalCount} wall posts · Local preview stored in this browser`
+            : `Showing ${posts.length} of ${totalCount} loaded wall posts · Saved in Supabase`}
       </div>
     </>
   );

@@ -1,5 +1,6 @@
 'use client';
 
+import { WALL_CAPABILITIES } from '@/features/wall/capabilities';
 import { WallTab } from '@/features/wall/post.types';
 
 interface StaticTabContentProps {
@@ -44,9 +45,9 @@ export function StaticTabContent({
         <div className="info-row">
           <span className="info-key">What is this?</span>
           <span>
-            A nostalgic frontend prototype inspired by the era of social walls.
-            Posts are stored in this browser as a local preview for now;
-            Supabase integration comes next.
+            {WALL_CAPABILITIES.isLocalPreview
+              ? 'A nostalgic frontend prototype inspired by the era of social walls. Posts are stored in this browser as a local preview for now; Supabase integration comes next.'
+              : 'A nostalgic public guestbook inspired by the era of social walls. Posts are saved in Supabase Postgres and update live via Supabase Realtime.'}
           </span>
         </div>
 
@@ -184,7 +185,10 @@ export function StaticTabContent({
         className="side-body"
         style={{ border: '1px solid #e4e8ee', borderTop: 0 }}
       >
-        Local preview posts: <strong id="box-count">{postCount}</strong>
+        {WALL_CAPABILITIES.isLocalPreview
+          ? 'Local preview posts:'
+          : 'Loaded wall posts (latest 50):'}{' '}
+        <strong id="box-count">{postCount}</strong>
         <br />
         Character limit: <strong>280</strong>
         <br />

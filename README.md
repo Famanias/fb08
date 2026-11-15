@@ -1,73 +1,88 @@
-# FB/08 — Your Little Corner of the Internet (Stage 1 Frontend)
+# WALL/08 (FB/08) — Public Community Wall
 
-A faithful 2008-era social profile Wall and public guestbook built with **Next.js App Router**, **React**, **TypeScript**, and **CSS**.
+A faithful 2008-era social profile Wall and public guestbook built with **Next.js App Router**, **React**, **TypeScript**, **Supabase Postgres**, and **Supabase Realtime**.
 
-Stage 1 delivers the complete frontend shell and an offline-capable **Local Preview** backed by `localStorage`, cleanly decoupled behind a `PostService` abstraction so Stage 2 can connect **Supabase Postgres + Realtime** with minimal UI changes.
+## Stack
 
-## Getting Started
-
-```bash
-npm install
-npm run dev
-```
-
-Open `http://localhost:3000`.
-
-### Scripts
-
-- `npm run dev` — Start the Next.js development server
-- `npm run build` — Production build + TypeScript verification
-- `npm run start` — Start the production server
-- `npm run lint` — Run ESLint across the codebase
-- `npx tsx --test features/wall/wall-rules.test.ts` — Run unit tests for validation, sorting, filtering, and `LocalPostService`
+- **Frontend:** Next.js 15 (App Router), React 19, TypeScript, CSS (`app/globals.css`)
+- **Database & Realtime:** Supabase PostgreSQL (`public.posts`), Row Level Security (RLS), least-privilege column grants, Supabase Realtime (`postgres_changes` on `INSERT`)
+- **Testing:** Node test runner (`tsx --test`) + Playwright two-browser verification
+- **Deployment:** Vercel + GitHub
 
 ## Architecture
 
 ```text
-app/
-  globals.css          # Reference 2008 styles, palette tokens, and responsive breakpoints
-  layout.tsx           # Root metadata and viewport
-  page.tsx             # Home page entry
-components/
-  WallApp.tsx          # Top-level client orchestrator
-  WallHeader.tsx       # Sticky #3b5998 topbar, nav links, greeting, search
-  ProfileSidebar.tsx   # Left monochrome portrait, links, info, mutual friends
-  WallTabs.tsx         # Wall / Info / Photos / Notes / Boxes tablist
-  PostComposer.tsx     # Display name editor, 280-char textarea, Feeling chip, Share
-  PostFeed.tsx         # Status indicator, mobile search, feed list, empty states
-  WallPost.tsx         # Individual post row + gated demo likes/comments
-  RetroAdsSidebar.tsx  # Right-column retro SVG advertisements & Wall Activity
-  StaticTabContent.tsx # Info, Photos, Notes, and Boxes panels
-  RetroArtwork.tsx     # React-safe inline SVG portrait and 3 retro ad illustrations
-  Toast.tsx            # Accessible toast notification
-features/wall/
-  post.types.ts        # WallPost (4-field contract), NewWallPost, PostService
-  post-service.ts      # Single swap point for Stage 2 backend integration
-  local-post-service.ts# Stage 1 localStorage implementation of PostService
-  sample-posts.ts      # Demo-only sample posts (never ship to production live feed)
-  capabilities.ts      # Feature flags (demoInteractionsEnabled, isLocalPreview)
-  demo-interactions.ts # Separate local-only store for demo Like/Comment buttons
-  wall-rules.ts        # Pure validation, sorting, filtering, and status labels
-  use-wall-posts.ts    # Client hook for posts, display name, search, and error states
-lib/
-  format-date.ts       # Period-accurate relative/absolute timestamps
-  initials.ts          # Initials and deterministic pastel avatar palette
-  safe-storage.ts      # Safe localStorage wrappers handling blocked/full storage
+Browser / React Next.js (Vercel)
+  ├── Supabase publishable key / Data API
+  │     ├── SELECT id, author, message, created_at FROM public.posts ORDER BY created_at DESC, id DESC LIMIT 50
+  │     └── INSERT (author, message) INTO public.posts
+  └── Supabase Realtime (postgres_changes: INSERT on public.posts)
+
+Supabase PostgreSQL
+  └── public.posts (id UUID, author TEXT, message TEXT, created_at TIMESTAMPTZ)
+      ├── RLS enabled + SELECT USING (true) + INSERT WITH CHECK (...)
+      ├── Column-level GRANT INSERT (author, message) — id/created_at cannot be overridden
+      └── CHECK constraints: trimmed author (1..24), trimmed message (1..280)
 ```
 
-## Stage 1 Limitations
+### Key Files
 
-- **Local preview only:** Posts, display names, and demo likes/comments are saved in the visitor's browser `localStorage` (`wall08.posts.v2`, `wall08.name.v1`, `wall08.demo_interactions.v1`) and are not shared across users or devices.
-- **Demo-only likes & comments:** The `Like` and `Comment` controls in the reference prototype are isolated in `features/wall/demo-interactions.ts` behind `WALL_CAPABILITIES.demoInteractionsEnabled`. They are intentionally excluded from the 4-field `WallPost` contract.
+- `supabase/migrations/20261115114000_create_posts.sql` — `public.posts` schema, CHECK constraints, `(created_at DESC, id DESC)` index, `REVOKE ALL` + least-privilege `GRANT SELECT` / `GRANT INSERT (author, message)`, RLS policies, and `supabase_realtime` publication entry.
+- `lib/supabase-config.ts` — Validates `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (with optional `NEXT_PUBLIC_SUPABASE_ANON_KEY` fallback) and blocks accidental `sb_secret_` / `service_role` keys in client code.
+- `features/wall/supabase-post-service.ts` — Implements `PostService` (`listLatest`, `create`, `subscribeToNewPosts`) with StrictMode-safe channel lifecycle and truthful connection status mapping.
+- `features/wall/post-service.ts` — Single service provider returning `SupabasePostService` (no silent fallback to local demo seeds).
+- `features/wall/use-wall-posts.ts` — Subscribes before initial fetch, deduplicates optimistic/returned inserts against Realtime echoes, and reconciles with `listLatest(50)` on reconnect or tab visibility restore.
+- `features/wall/capabilities.ts` — Live mode flags (`isLocalPreview: false`, `demoInteractionsEnabled: false`).
 
-## Stage 2 Migration Plan (Supabase Integration)
+## Environment Variables
 
-1. **Implement `SupabasePostService`** (`features/wall/supabase-post-service.ts`) implementing `PostService` from `features/wall/post.types.ts`:
-   - `listLatest(limit = 50)`: query `posts` (`id, author, message, created_at`) ordered by `created_at desc, id desc` with limit `50`.
-   - `create({ author, message })`: insert into `posts` and return the inserted 4-field `WallPost` row.
-   - `subscribeToNewPosts(onInsert, onStatus)`: subscribe to Postgres `INSERT` events on `posts` via Supabase Realtime and emit `'connecting' | 'live' | 'reconnecting' | 'offline' | 'error'`.
-2. **Swap the service in `features/wall/post-service.ts`:**
-   - Return `SupabasePostService` from `getPostService()` instead of `LocalPostService`.
-3. **Update `features/wall/capabilities.ts`:**
-   - Set `isLocalPreview: false` and `demoInteractionsEnabled: false` so demo-only Like/Comment buttons and sample seeds are hidden/disabled in live multi-user mode.
-4. **Update preview labels in `PostFeed.tsx` / `WallApp.tsx`** once `isLocalPreview` is `false` (the `Local preview` dot automatically switches to `Live` via `getStatusLabel(connectionStatus)`).
+Copy `.env.example` to `.env.local` for local development (never commit `.env.local` or secret keys):
+
+```bash
+NEXT_PUBLIC_SUPABASE_URL=https://your-project-ref.supabase.co
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_your_publishable_key
+```
+
+> Note: If an older Supabase project only provides a legacy `anon` key, `NEXT_PUBLIC_SUPABASE_ANON_KEY` is also supported as a fallback. Never expose `service_role` or `sb_secret_*` keys in browser code. If environment variables are missing, the UI shows an explicit configuration error rather than falling back to local demo posts.
+
+## Setup & SQL Migration
+
+1. Install dependencies:
+   ```bash
+   npm install
+   ```
+2. Apply `supabase/migrations/20261115114000_create_posts.sql` to your Supabase project (via `supabase db push` or the Supabase SQL Editor).
+3. Configure `.env.local` with your project's public URL and publishable key.
+4. Start locally:
+   ```bash
+   npm run dev
+   ```
+
+## Commands
+
+- `npm run dev` — Start local development server
+- `npm run build` — Production build + TypeScript verification
+- `npm run start` — Serve production build
+- `npm run lint` — Run ESLint across the repo
+- `npm test` — Run unit tests (`features/wall/wall-rules.test.ts` and `features/wall/supabase-post-service.test.ts`)
+- `npx tsc --noEmit` — Standalone TypeScript typecheck
+
+## Design Reference
+
+- Visual layout, colors (`#3b5998`, `#2c4477`, `#d8dfea`), typography, inline SVG portrait and retro ads, tabs (`Wall`, `Info`, `Photos`, `Notes`, `Boxes`), and responsive breakpoints are preserved from `public/assets/aistudio/WALL08_2008_FACEBOOK_WALL_UI_5ab6d653.html`.
+
+## Known Limitations & Security Tradeoffs
+
+- **Anonymous public posting & spam risk:** By design for this public guestbook, `anon` has direct `INSERT (author, message)` access protected by RLS and CHECK constraints. While RLS and column privileges prevent `UPDATE`, `DELETE`, invalid lengths, whitespace-only posts, and `id`/`created_at` spoofing, **RLS alone does not prevent automated spam or flooding**. A browser-side cooldown is not real security. If promoted publicly at scale, move inserts behind a Next.js API route with durable IP/device rate limiting and Cloudflare Turnstile verification, and revoke direct `anon` `INSERT`.
+- **Unverified display names:** Visitor display names are stored locally in `localStorage` (`wall08.name.v1`), capped at 24 characters, and are not authenticated.
+- **Demo extras disabled in live mode:** The Stage 1 local-only `Like` and `Comment` controls are disabled via `WALL_CAPABILITIES.demoInteractionsEnabled = false` so the live app never implies cross-visitor persistence for those non-database actions.
+- **Feed & search scope:** The feed queries and displays the latest **50** posts (`created_at DESC, id DESC`). Client-side search filters within those 50 loaded posts, and activity counts are labeled as loaded posts.
+
+## Two-Browser Realtime Demo Steps
+
+1. Open the deployed URL in **Browser Window A** and **Browser Window B** (desktop and/or mobile width).
+2. Confirm both show **Live · Newest first · latest 50** in the feed toolbar.
+3. Optionally click **Change display name** in Window A and save a name.
+4. Type a message (1–280 characters) and click **Share** in Window A.
+5. Verify the post appears immediately at the top of Window A (no duplicate) **and** appears in Window B **without refreshing**.
+6. Refresh Window B and confirm the post persists from Supabase Postgres.

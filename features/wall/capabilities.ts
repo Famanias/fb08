@@ -11,6 +11,6 @@
  *     intentionally stores only { id, author, message, created_at }.
  */
 export const WALL_CAPABILITIES = {
-  isLocalPreview: true,
-  demoInteractionsEnabled: true,
+  isLocalPreview: false,
+  demoInteractionsEnabled: false,
 } as const;

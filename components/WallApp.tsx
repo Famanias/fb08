@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { WALL_CAPABILITIES } from '@/features/wall/capabilities';
 import { WallTab } from '@/features/wall/post.types';
 import { useWallPosts } from '@/features/wall/use-wall-posts';
 import { PostComposer } from './PostComposer';
@@ -26,6 +27,7 @@ export function WallApp() {
     connectionStatus,
     demoInteractions,
     createPost,
+    retryLoad,
     updateDisplayName,
     toggleLike,
     addComment,
@@ -132,7 +134,8 @@ export function WallApp() {
               </div>
               <div className="visitor-stamp">
                 Established 2008 &nbsp;·&nbsp;{' '}
-                <span id="post-count">{totalCount}</span> wall posts
+                <span id="post-count">{totalCount}</span>{' '}
+                {WALL_CAPABILITIES.isLocalPreview ? 'wall posts' : 'loaded wall posts'}
               </div>
             </div>
 
@@ -165,10 +168,12 @@ export function WallApp() {
                   searchQuery={searchQuery}
                   onSearchChange={handleSearchChange}
                   isLoading={isLoading}
+                  errorMessage={errorMessage}
                   connectionStatus={connectionStatus}
                   demoInteractions={demoInteractions}
                   onToggleLike={toggleLike}
                   onAddComment={addComment}
+                  onRetry={() => void retryLoad()}
                   onNotify={showToast}
                 />
               </section>
@@ -199,7 +204,9 @@ export function WallApp() {
             <button type="button" id="footer-top" onClick={handleScrollTop}>
               Back to top ↑
             </button>
-            <span>LOCAL PREVIEW</span>
+            <span>
+              {WALL_CAPABILITIES.isLocalPreview ? 'LOCAL PREVIEW' : 'SUPABASE · REALTIME'}
+            </span>
           </span>
         </footer>
       </div>

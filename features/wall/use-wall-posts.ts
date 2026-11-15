@@ -17,6 +17,7 @@ import {
   DEFAULT_DISPLAY_NAME,
   MAX_VISIBLE_POSTS,
   filterPosts,
+  mergeWallPosts,
   normalizeDisplayName,
   prependUniquePost,
   sortAndLimitPosts,
@@ -46,6 +47,7 @@ export interface UseWallPostsResult {
   hydrated: boolean;
   demoInteractions: DemoInteractionsState;
   createPost: (message: string) => Promise<boolean>;
+  retryLoad: () => Promise<void>;
   updateDisplayName: (nextName: string) => { ok: boolean; name?: string; error?: string };
   toggleLike: (postId: string) => { ok: boolean; error?: string };
   addComment: (postId: string, text: string) => { ok: boolean; error?: string };
@@ -59,52 +61,58 @@ export function useWallPosts(): UseWallPostsResult {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isPosting, setIsPosting] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [connectionStatus, setConnectionStatus] =
-    useState<WallConnectionStatus>('preview');
+  const [connectionStatus, setConnectionStatus] = useState<WallConnectionStatus>(
+    WALL_CAPABILITIES.isLocalPreview ? 'preview' : 'connecting'
+  );
   const [hydrated, setHydrated] = useState<boolean>(false);
   const [demoInteractions, setDemoInteractions] =
     useState<DemoInteractionsState>(EMPTY_DEMO_INTERACTIONS);
 
   const postingRef = useRef<boolean>(false);
+  const mountedRef = useRef<boolean>(true);
+
+  const reconcileLatest = useCallback(async () => {
+    try {
+      const latestPosts = await postService.listLatest(MAX_VISIBLE_POSTS);
+      if (!mountedRef.current) return;
+      setPosts((prev) => mergeWallPosts(prev, latestPosts, MAX_VISIBLE_POSTS));
+      setErrorMessage(null);
+    } catch (err: unknown) {
+      if (!mountedRef.current) return;
+      setErrorMessage(
+        err instanceof Error ? err.message : 'Could not load wall posts.'
+      );
+    } finally {
+      if (!mountedRef.current) return;
+      setHydrated(true);
+      setIsLoading(false);
+    }
+  }, [postService]);
 
   useEffect(() => {
+    mountedRef.current = true;
     let active = true;
+    let needsReconnectReconcile = false;
+    let initialLoadDone = false;
 
-    postService
-      .listLatest(MAX_VISIBLE_POSTS)
-      .then((initialPosts) => {
-        if (!active) return;
+    void Promise.resolve().then(() => {
+      if (!active) return;
+      const storedName = safeReadJSON<string>(
+        DISPLAY_NAME_STORAGE_KEY,
+        DEFAULT_DISPLAY_NAME
+      );
+      const normalized =
+        typeof storedName.value === 'string'
+          ? normalizeDisplayName(storedName.value)
+          : null;
+      setDisplayName(normalized ?? DEFAULT_DISPLAY_NAME);
 
-        const storedName = safeReadJSON<string>(
-          DISPLAY_NAME_STORAGE_KEY,
-          DEFAULT_DISPLAY_NAME
-        );
-        const normalized =
-          typeof storedName.value === 'string'
-            ? normalizeDisplayName(storedName.value)
-            : null;
-        setDisplayName(normalized ?? DEFAULT_DISPLAY_NAME);
+      if (WALL_CAPABILITIES.demoInteractionsEnabled) {
+        setDemoInteractions(loadDemoInteractions());
+      }
+    });
 
-        if (WALL_CAPABILITIES.demoInteractionsEnabled) {
-          setDemoInteractions(loadDemoInteractions());
-        }
-
-        setPosts(sortAndLimitPosts(initialPosts, MAX_VISIBLE_POSTS));
-        setHydrated(true);
-        setErrorMessage(null);
-      })
-      .catch((err: unknown) => {
-        if (!active) return;
-        setHydrated(true);
-        setErrorMessage(
-          err instanceof Error ? err.message : 'Could not load wall posts.'
-        );
-      })
-      .finally(() => {
-        if (!active) return;
-        setIsLoading(false);
-      });
-
+    // Subscribe before the initial fetch so events arriving mid-flight are captured and merged.
     const unsubscribe = postService.subscribeToNewPosts(
       (incomingPost) => {
         if (!active) return;
@@ -115,14 +123,55 @@ export function useWallPosts(): UseWallPostsResult {
       (status) => {
         if (!active) return;
         setConnectionStatus(status);
+        if (
+          status === 'reconnecting' ||
+          status === 'offline' ||
+          status === 'error'
+        ) {
+          needsReconnectReconcile = true;
+        } else if (status === 'live' && needsReconnectReconcile) {
+          needsReconnectReconcile = false;
+          void reconcileLatest();
+        }
       }
     );
 
+    void Promise.resolve()
+      .then(() => reconcileLatest())
+      .finally(() => {
+        initialLoadDone = true;
+      });
+
+    const handleVisibilityOrOnline = () => {
+      if (!active || !initialLoadDone) return;
+      if (
+        typeof document !== 'undefined' &&
+        document.visibilityState === 'hidden'
+      ) {
+        return;
+      }
+      void reconcileLatest();
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('online', handleVisibilityOrOnline);
+    }
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', handleVisibilityOrOnline);
+    }
+
     return () => {
       active = false;
+      mountedRef.current = false;
       unsubscribe();
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('online', handleVisibilityOrOnline);
+      }
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', handleVisibilityOrOnline);
+      }
     };
-  }, [postService]);
+  }, [postService, reconcileLatest]);
 
   const visiblePosts = useMemo(() => {
     const ordered = sortAndLimitPosts(posts, MAX_VISIBLE_POSTS);
@@ -250,6 +299,7 @@ export function useWallPosts(): UseWallPostsResult {
     hydrated,
     demoInteractions,
     createPost,
+    retryLoad: reconcileLatest,
     updateDisplayName,
     toggleLike,
     addComment,

@@ -82,6 +82,14 @@ export function prependUniquePost(
   return sortAndLimitPosts([incoming, ...posts], limit);
 }
 
+export function mergeWallPosts(
+  existing: WallPost[],
+  incoming: WallPost[],
+  limit: number = MAX_VISIBLE_POSTS
+): WallPost[] {
+  return sortAndLimitPosts([...incoming, ...existing], limit);
+}
+
 export function filterPosts(posts: WallPost[], query: string): WallPost[] {
   const normalized = query.trim().toLowerCase();
   if (!normalized) {
