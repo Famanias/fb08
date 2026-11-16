@@ -1,0 +1,233 @@
+[
+  {
+    "slug": "film-camera",
+    "title": "[Demo] Vintage Film Camera",
+    "category": "Electronics",
+    "price": "2500.00",
+    "seller": "Jamie · Demo Seller",
+    "description": "A retro camera for a weekend photo walk. Includes an illustrative carrying strap and lens cap.",
+    "photoId": 30339402,
+    "photographer": "Pexels contributor",
+    "source": "https://www.pexels.com/photo/retro-analog-camera-on-vintage-wooden-desk-30339402/"
+  },
+  {
+    "slug": "study-desk",
+    "title": "[Demo] Wooden Study Desk",
+    "category": "Furniture",
+    "price": "1800.00",
+    "seller": "Alex · Demo Seller",
+    "description": "A compact wooden desk for a quiet study corner. A little vintage character, with room for a notebook and lamp.",
+    "photoId": 5393443,
+    "photographer": "KATRIN BOLOVTSOVA",
+    "source": "https://www.pexels.com/photo/vintage-wooden-desk-and-a-chair-5393443/"
+  },
+  {
+    "slug": "headphones",
+    "title": "[Demo] Over-Ear Headphones",
+    "category": "Electronics",
+    "price": "1250.00",
+    "seller": "Drew · Demo Seller",
+    "description": "Black over-ear headphones for an afternoon playlist or a late-night study session. Illustrative used condition.",
+    "photoId": 10942520,
+    "photographer": "John Taran",
+    "source": "https://www.pexels.com/photo/black-headphones-on-wooden-surface-10942520/"
+  },
+  {
+    "slug": "city-bike",
+    "title": "[Demo] Red City Bicycle",
+    "category": "Sports",
+    "price": "3200.00",
+    "seller": "Sam · Demo Seller",
+    "description": "A red bicycle for easy rides around the neighborhood. An example of the kind of secondhand find you might share here.",
+    "photoId": 14860979,
+    "photographer": "Pexels contributor",
+    "source": "https://www.pexels.com/photo/red-bicycle-parked-beside-the-concrete-wall-14860979/"
+  },
+  {
+    "slug": "white-shirt",
+    "title": "[Demo] Classic White T-Shirt",
+    "category": "Clothing",
+    "price": "280.00",
+    "seller": "Mika · Demo Seller",
+    "description": "A simple white cotton-style tee, easy to pair with jeans. Size and fabric details are illustrative only.",
+    "photoId": 37704841,
+    "photographer": "Pexels contributor",
+    "source": "https://www.pexels.com/photo/minimalist-white-t-shirt-flat-lay-with-sunlight-37704841/"
+  },
+  {
+    "slug": "paperbacks",
+    "title": "[Demo] Paperback Book Bundle",
+    "category": "Books",
+    "price": "350.00",
+    "seller": "Pat · Demo Seller",
+    "description": "An assorted stack of books for your next reading weekend. Fictional bundle; individual titles are not an offer of inventory.",
+    "photoId": 7034089,
+    "photographer": "George Milton",
+    "source": "https://www.pexels.com/photo/close-up-photo-of-stack-of-books-7034089/"
+  },
+  {
+    "slug": "table-lamp",
+    "title": "[Demo] Warm Table Lamp",
+    "category": "Home",
+    "price": "900.00",
+    "seller": "Robin · Demo Seller",
+    "description": "A decorative table lamp for a cozy reading nook. Warm tones and a traditional shade fit the old-school mood.",
+    "photoId": 12801238,
+    "photographer": "Özge Taşkıran",
+    "source": "https://www.pexels.com/photo/close-up-shot-of-table-lamp-12801238/"
+  },
+  {
+    "slug": "tablet-keyboard",
+    "title": "[Demo] Tablet and Keyboard",
+    "category": "Electronics",
+    "price": "4900.00",
+    "seller": "Chris · Demo Seller",
+    "description": "A tablet-and-keyboard setup for browsing, notes and a little music. This sample does not represent a particular model or specification.",
+    "photoId": 4523063,
+    "photographer": "Polina Tankilevitch",
+    "source": "https://www.pexels.com/photo/top-view-of-wireless-electronics-4523063/"
+  },
+  {
+    "slug": "reading-chair",
+    "title": "[Demo] Wooden Reading Chair",
+    "category": "Furniture",
+    "price": "1450.00",
+    "seller": "Lee · Demo Seller",
+    "description": "A wooden chair for a small reading corner beside a shelf. Other room furnishings in the photograph are decorative context.",
+    "photoId": 16751825,
+    "photographer": "Tuğçe Açıkyürek",
+    "source": "https://www.pexels.com/photo/bookshelf-and-a-chair-in-a-domestic-room-16751825/"
+  },
+  {
+    "slug": "denim-jacket",
+    "title": "[Demo] Blue Denim Jacket",
+    "category": "Clothing",
+    "price": "650.00",
+    "seller": "Dani · Demo Seller",
+    "description": "A casual blue denim jacket for cooler evenings. The stock photograph illustrates the style, rather than a real item for sale.",
+    "photoId": 1105058,
+    "photographer": "Muhammad Rifki Adiyanto",
+    "source": "https://www.pexels.com/photo/man-wearing-black-bads-crew-neck-shirt-under-blue-denim-jacket-1105058/"
+  },
+  {
+    "slug": "tennis-racket",
+    "title": "[Demo] Tennis Racket Set",
+    "category": "Sports",
+    "price": "850.00",
+    "seller": "Jo · Demo Seller",
+    "description": "A racket and tennis balls for a relaxed afternoon on court. A fictional example of sporting equipment classifieds.",
+    "photoId": 14629572,
+    "photographer": "Jenny K.",
+    "source": "https://www.pexels.com/photo/blue-tennis-racket-on-the-ground-14629572/"
+  },
+  {
+    "slug": "potted-basil",
+    "title": "[Demo] Potted Basil Plant",
+    "category": "Home",
+    "price": "180.00",
+    "seller": "Bea · Demo Seller",
+    "description": "A little greenery for a sunny kitchen windowsill. An illustrative potted basil plant, with no live plant offered for sale.",
+    "photoId": 1437424,
+    "photographer": "Diana",
+    "source": "https://www.pexels.com/photo/close-up-photo-of-plant-on-pot-1437424/"
+  },
+  {
+    "slug": "guitar",
+    "title": "[Demo] Acoustic Guitar",
+    "category": "Other",
+    "price": "2800.00",
+    "seller": "Nico · Demo Seller",
+    "description": "An acoustic guitar for learning a few favorite songs. Example price and condition; no instrument is actually being sold.",
+    "photoId": 12174237,
+    "photographer": "Pexels contributor",
+    "source": "https://www.pexels.com/photo/an-acoustic-guitar-hanging-on-a-wooden-wall-12174237/"
+  },
+  {
+    "slug": "notebooks",
+    "title": "[Demo] Notebook and Planner",
+    "category": "Books",
+    "price": "220.00",
+    "seller": "Ari · Demo Seller",
+    "description": "A notebook-and-planner pair for lists, sketches and study notes. Dates and stationery details in the image are illustrative.",
+    "photoId": 11578767,
+    "photographer": "Jessika Arraes",
+    "source": "https://www.pexels.com/photo/stack-of-books-11578767/"
+  },
+  {
+    "slug": "home-desk",
+    "title": "[Demo] Home Office Desk",
+    "category": "Furniture",
+    "price": "2350.00",
+    "seller": "Max · Demo Seller",
+    "description": "A warm wooden desk for a home workspace. Accessories, chair and wall decor in the stock photo are not included in any real offer.",
+    "photoId": 28668434,
+    "photographer": "Leticia Curvelo",
+    "source": "https://www.pexels.com/photo/cozy-minimalist-home-office-with-wooden-desk-28668434/"
+  },
+  {
+    "slug": "black-sneakers",
+    "title": "[Demo] Black Everyday Sneakers",
+    "category": "Clothing",
+    "price": "750.00",
+    "seller": "Kai · Demo Seller",
+    "description": "A minimalist pair of black sneakers for everyday outfits. Size, brand, authenticity and condition are not represented as a real sales claim.",
+    "photoId": 19845610,
+    "photographer": "ALOK DAS",
+    "source": "https://www.pexels.com/photo/hands-holding-a-pair-of-black-sneakers-19845610/"
+  },
+  {
+    "slug": "basketball",
+    "title": "[Demo] Outdoor Basketball",
+    "category": "Sports",
+    "price": "450.00",
+    "seller": "Ren · Demo Seller",
+    "description": "An outdoor basketball for a friendly neighborhood game. Stock photograph used to illustrate this fictional classifieds entry.",
+    "photoId": 9634895,
+    "photographer": "Pexels contributor",
+    "source": "https://www.pexels.com/photo/person-on-basketball-court-holding-ball-between-legs-9634895/"
+  },
+  {
+    "slug": "coffee-mug",
+    "title": "[Demo] Ceramic Coffee Mug",
+    "category": "Home",
+    "price": "160.00",
+    "seller": "Toni · Demo Seller",
+    "description": "A simple ceramic mug for a quiet coffee break. Books, plant and furnishings in the scene are photographic styling.",
+    "photoId": 35097354,
+    "photographer": "Tuğba Dönmez",
+    "source": "https://www.pexels.com/photo/cozy-reading-nook-with-coffee-and-books-35097354/"
+  },
+  {
+    "slug": "study-books",
+    "title": "[Demo] Study Book Stack",
+    "category": "Books",
+    "price": "480.00",
+    "seller": "Lou · Demo Seller",
+    "description": "An assorted book stack for a study shelf. The laptop in the photo is not part of this illustrative bundle.",
+    "photoId": 4284791,
+    "photographer": "alleksana",
+    "source": "https://www.pexels.com/photo/stack-of-books-against-white-background-4284791/"
+  },
+  {
+    "slug": "backpack",
+    "title": "[Demo] Brown Day Backpack",
+    "category": "Other",
+    "price": "590.00",
+    "seller": "Cam · Demo Seller",
+    "description": "A brown backpack for day trips, school notes and everyday essentials. Capacity and materials are illustrative only.",
+    "photoId": 9448166,
+    "photographer": "Deybson Mallony",
+    "source": "https://www.pexels.com/photo/brown-backpack-hanging-on-a-wall-9448166/"
+  },
+  {
+    "slug": "guitar-practice",
+    "title": "[Demo] Guitar Practice Bundle",
+    "category": "Other",
+    "price": "3100.00",
+    "seller": "Ash · Demo Seller",
+    "description": "A guitar-and-sheet-music scene for a fictional beginner practice bundle. No instrument or music rights are offered for sale.",
+    "photoId": 9717785,
+    "photographer": "Pexels contributor",
+    "source": "https://www.pexels.com/photo/close-up-photo-of-a-wooden-acoustic-guitar-near-a-musical-composition-9717785/"
+  }
+]
