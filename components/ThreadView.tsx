@@ -66,6 +66,7 @@ export function ThreadView({
   const [replyTarget, setReplyTarget] = useState<BoardPost | null>(null);
   const [inlineReplyText, setInlineReplyText] = useState('');
   const [inlineAnonymous, setInlineAnonymous] = useState(false);
+  const [expandedReplies, setExpandedReplies] = useState<Record<string, boolean>>({});
   const [confirmThreadDelete, setConfirmThreadDelete] = useState(false);
   const [isDeletingThread, setIsDeletingThread] = useState(false);
 
@@ -104,19 +105,23 @@ export function ThreadView({
   }
 
   function handleStartReply(target: BoardPost) {
+    const parentId = target.parent_post_id ?? target.id;
     setReplyTarget(target);
     setInlineAnonymous(false);
     setInlineReplyText(target.parent_post_id ? buildReplyMentionPrefix(target) : '');
+    setExpandedReplies((prev) => ({ ...prev, [parentId]: true }));
     if (errorMessage) onClearError();
   }
 
   async function submitInlineReply() {
     if (!replyTarget || !inlineCheck.valid || isSubmitting) return;
+    const parentId = replyTarget.parent_post_id ?? replyTarget.id;
     const ok = await onCreateReply(inlineCheck.value, inlineAnonymous, {
-      parentPostId: replyTarget.parent_post_id ?? replyTarget.id,
+      parentPostId: parentId,
       replyToPostId: replyTarget.id,
     });
     if (ok) {
+      setExpandedReplies((prev) => ({ ...prev, [parentId]: true }));
       setReplyTarget(null);
       setInlineReplyText('');
       setInlineAnonymous(false);
@@ -254,6 +259,11 @@ export function ThreadView({
                 Boolean(user) &&
                 Boolean(replyTarget) &&
                 (replyTarget!.parent_post_id ?? replyTarget!.id) === comment.id;
+              const isRepliesExpanded =
+                Boolean(expandedReplies[comment.id]) ||
+                (Boolean(searchQuery.trim()) && replies.length > 0);
+              const showReplyThread =
+                (replies.length > 0 && isRepliesExpanded) || isInlineOpen;
 
               return (
                 <div key={comment.id} className="comment-group" data-comment-id={comment.id}>
@@ -265,23 +275,48 @@ export function ThreadView({
                     onDeleteReply={onDeleteReply}
                   />
 
-                  {replies.length > 0 || isInlineOpen ? (
+                  {replies.length > 0 ? (
+                    <div className="reply-toggle-row">
+                      <button
+                        type="button"
+                        className="reply-toggle-btn"
+                        data-toggle-replies={comment.id}
+                        aria-expanded={isRepliesExpanded}
+                        onClick={() =>
+                          setExpandedReplies((prev) => ({
+                            ...prev,
+                            [comment.id]: !isRepliesExpanded,
+                          }))
+                        }
+                      >
+                        {isRepliesExpanded
+                          ? `Hide replies (${replies.length})`
+                          : `View replies (${replies.length})`}
+                      </button>
+                    </div>
+                  ) : null}
+
+                  {showReplyThread ? (
                     <div className="reply-thread">
-                      {replies.map((reply) => (
-                        <BoardPostItem
-                          key={reply.id}
-                          post={reply}
-                          replyToPost={
-                            reply.reply_to_post_id
-                              ? (postsById.get(reply.reply_to_post_id) ?? null)
-                              : null
-                          }
-                          canReply={Boolean(user)}
-                          onStartReply={handleStartReply}
-                          onEditPost={onEditPost}
-                          onDeleteReply={onDeleteReply}
-                        />
-                      ))}
+                      {replies.length > 0 && isRepliesExpanded ? (
+                        <div className="reply-thread-scroll" data-replies-scroll={comment.id}>
+                          {replies.map((reply) => (
+                            <BoardPostItem
+                              key={reply.id}
+                              post={reply}
+                              replyToPost={
+                                reply.reply_to_post_id
+                                  ? (postsById.get(reply.reply_to_post_id) ?? null)
+                                  : null
+                              }
+                              canReply={Boolean(user)}
+                              onStartReply={handleStartReply}
+                              onEditPost={onEditPost}
+                              onDeleteReply={onDeleteReply}
+                            />
+                          ))}
+                        </div>
+                      ) : null}
 
                       {isInlineOpen && replyTarget ? (
                         <form

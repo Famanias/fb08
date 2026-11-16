@@ -1578,11 +1578,39 @@ h1 {
   border-bottom: 0;
 }
 
+.reply-toggle-row {
+  margin: 0 0 8px 44px;
+}
+
+.reply-toggle-btn {
+  background: #eceff5;
+  border: 1px solid #c5d1e5;
+  color: #3b5998;
+  font: bold 11px Arial, sans-serif;
+  padding: 3px 9px;
+  cursor: pointer;
+}
+
+.reply-toggle-btn:hover {
+  background: #dfe5f2;
+  text-decoration: underline;
+}
+
 .reply-thread {
   margin: 0 0 10px 44px;
-  padding: 4px 0 4px 10px;
+  padding: 6px 8px;
   border-left: 2px solid #c5d1e5;
   background: #f7f8fb;
+}
+
+.reply-thread-scroll {
+  max-height: 300px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  padding-right: 4px;
+  scrollbar-width: thin;
+  scrollbar-color: #aebcd6 #eef1f7;
 }
 
 .post.post-reply {
@@ -1655,6 +1683,9 @@ h1 {
 }
 
 @media (max-width: 600px) {
+  .reply-toggle-row {
+    margin-left: 16px;
+  }
   .reply-thread {
     margin-left: 16px;
     padding-left: 8px;
