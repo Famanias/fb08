@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "test": "npx tsx --test features/wall/wall-rules.test.ts features/wall/supabase-post-service.test.ts",
+    "test": "npx tsx --test lib/server/auth.test.ts lib/server/board-routes.test.ts features/board/board-rules.test.ts features/board/board-service.test.ts",
     "clean": "next clean"
   },
   "dependencies": {

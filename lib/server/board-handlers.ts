@@ -349,23 +349,22 @@ export async function handleEditPost(
     message: msgCheck.value,
   });
 
+  if (res.status === 'ok') {
+    return jsonResponse(
+      {
+        post: toPublicPost(res.post, user.id),
+        edit: res.edit,
+      },
+      200
+    );
+  }
   if (res.status === 'not_found') {
     return jsonResponse({ error: 'Post not found.' }, 404);
   }
   if (res.status === 'forbidden') {
     return jsonResponse({ error: 'You can only edit your own posts.' }, 403);
   }
-  if (res.status === 'deleted') {
-    return jsonResponse({ error: 'Deleted posts cannot be edited.' }, 409);
-  }
-
-  return jsonResponse(
-    {
-      post: toPublicPost(res.post, user.id),
-      edit: res.edit,
-    },
-    200
-  );
+  return jsonResponse({ error: 'Deleted posts cannot be edited.' }, 409);
 }
 
 export async function handleDeleteReply(
@@ -384,21 +383,17 @@ export async function handleDeleteReply(
   }
 
   const res = await store.deleteReply({ userId: user.id, postId });
+  if (res.status === 'ok' || res.status === 'already_deleted') {
+    return jsonResponse({ ok: true, deleted_at: res.deleted_at }, 200);
+  }
   if (res.status === 'not_found') {
     return jsonResponse({ error: 'Post not found.' }, 404);
   }
   if (res.status === 'forbidden') {
     return jsonResponse({ error: 'You can only delete your own replies.' }, 403);
   }
-  if (res.status === 'cannot_delete_op') {
-    return jsonResponse(
-      { error: 'Use Delete Thread to remove the entire thread.' },
-      400
-    );
-  }
-  if (res.status === 'already_deleted') {
-    return jsonResponse({ ok: true, deleted_at: res.deleted_at }, 200);
-  }
-
-  return jsonResponse({ ok: true, deleted_at: res.deleted_at }, 200);
+  return jsonResponse(
+    { error: 'Use Delete Thread to remove the entire thread.' },
+    400
+  );
 }

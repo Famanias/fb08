@@ -1,88 +1,42 @@
-# WALL/08 (FB/08) — Public Community Wall
+# WALL/08 (`fb/08`) — 2008 Anonymous Textboard
 
-A faithful 2008-era social profile Wall and public guestbook built with **Next.js App Router**, **React**, **TypeScript**, **Supabase Postgres**, and **Supabase Realtime**.
+A 2008-Facebook-styled community textboard built with Next.js 15 App Router, Supabase PostgreSQL + Realtime, and TypeScript.
 
-## Stack
+## Features
 
-- **Frontend:** Next.js 15 (App Router), React 19, TypeScript, CSS (`app/globals.css`)
-- **Database & Realtime:** Supabase PostgreSQL (`public.posts`), Row Level Security (RLS), least-privilege column grants, Supabase Realtime (`postgres_changes` on `INSERT`)
-- **Testing:** Node test runner (`tsx --test`) + Playwright two-browser verification
-- **Deployment:** Vercel + GitHub
-
-## Architecture
-
-```text
-Browser / React Next.js (Vercel)
-  ├── Supabase publishable key / Data API
-  │     ├── SELECT id, author, message, created_at FROM public.posts ORDER BY created_at DESC, id DESC LIMIT 50
-  │     └── INSERT (author, message) INTO public.posts
-  └── Supabase Realtime (postgres_changes: INSERT on public.posts)
-
-Supabase PostgreSQL
-  └── public.posts (id UUID, author TEXT, message TEXT, created_at TIMESTAMPTZ)
-      ├── RLS enabled + SELECT USING (true) + INSERT WITH CHECK (...)
-      ├── Column-level GRANT INSERT (author, message) — id/created_at cannot be overridden
-      └── CHECK constraints: trimmed author (1..24), trimmed message (1..280)
-```
-
-### Key Files
-
-- `supabase/migrations/20261115114000_create_posts.sql` — `public.posts` schema, CHECK constraints, `(created_at DESC, id DESC)` index, `REVOKE ALL` + least-privilege `GRANT SELECT` / `GRANT INSERT (author, message)`, RLS policies, and `supabase_realtime` publication entry.
-- `lib/supabase-config.ts` — Validates `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (with optional `NEXT_PUBLIC_SUPABASE_ANON_KEY` fallback) and blocks accidental `sb_secret_` / `service_role` keys in client code.
-- `features/wall/supabase-post-service.ts` — Implements `PostService` (`listLatest`, `create`, `subscribeToNewPosts`) with StrictMode-safe channel lifecycle and truthful connection status mapping.
-- `features/wall/post-service.ts` — Single service provider returning `SupabasePostService` (no silent fallback to local demo seeds).
-- `features/wall/use-wall-posts.ts` — Subscribes before initial fetch, deduplicates optimistic/returned inserts against Realtime echoes, and reconciles with `listLatest(50)` on reconnect or tab visibility restore.
-- `features/wall/capabilities.ts` — Live mode flags (`isLocalPreview: false`, `demoInteractionsEnabled: false`).
+- **Public read-only browsing:** Visitors without an account can browse, read, and search all threads, replies, and edit histories.
+- **Simple account gating:** Register or log in with just a username (`1–24` chars, case-insensitive unique) and password (`1–256` chars, no special characters, minimum length beyond 1 char, or email required).
+- **Textboard threads & bumping:** Create threads (`title` + `#1` OP), reply sequentially (`#2`, `#3`, ...), and bump threads to the top on new replies.
+- **Per-thread anonymous IDs:** Account usernames never appear on public threads or replies. Each post displays `Anonymous #<tag>` scoped deterministically to `(user, thread)`.
+- **Own-post editing with public edit history:** Authors can edit their own posts (`#1+`), automatically recording previous versions in public expandable edit histories.
+- **Separated reply vs. thread deletion:** Authors can soft-delete their own replies (`#2+`, preserving reply numbering as `[deleted by author]` while clearing edit history) and thread creators have a dedicated **Delete Thread** button with confirmation.
+- **Live updates:** Supabase Realtime synchronizes new threads, replies, edits, and thread deletions across connected browsers.
 
 ## Environment Variables
 
-Copy `.env.example` to `.env.local` for local development (never commit `.env.local` or secret keys):
+Copy `.env.example` to `.env.local` and provide:
 
 ```bash
 NEXT_PUBLIC_SUPABASE_URL=https://your-project-ref.supabase.co
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_your_publishable_key
+SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
+AUTH_SESSION_SECRET=at_least_16_random_characters
 ```
 
-> Note: If an older Supabase project only provides a legacy `anon` key, `NEXT_PUBLIC_SUPABASE_ANON_KEY` is also supported as a fallback. Never expose `service_role` or `sb_secret_*` keys in browser code. If environment variables are missing, the UI shows an explicit configuration error rather than falling back to local demo posts.
+- `NEXT_PUBLIC_SUPABASE_*` variables are used in the browser strictly for read-only Realtime subscriptions (`anon` `SELECT` only).
+- `SUPABASE_SERVICE_ROLE_KEY` and `AUTH_SESSION_SECRET` are **server-only** (never prefix with `NEXT_PUBLIC_`).
 
-## Setup & SQL Migration
+## Database Migration
 
-1. Install dependencies:
-   ```bash
-   npm install
-   ```
-2. Apply `supabase/migrations/20261115114000_create_posts.sql` to your Supabase project (via `supabase db push` or the Supabase SQL Editor).
-3. Configure `.env.local` with your project's public URL and publishable key.
-4. Start locally:
-   ```bash
-   npm run dev
-   ```
+Apply [20261116084500_create_textboard_schema.sql](supabase/migrations/20261116084500_create_textboard_schema.sql) to provision `board_users`, `board_threads`, `board_posts`, `board_post_edits`, column-restricted RLS policies, atomic RPCs (`create_board_thread`, `create_board_reply`, `edit_board_post`), and `supabase_realtime` publication entries.
 
-## Commands
+## Local Development & Verification
 
-- `npm run dev` — Start local development server
-- `npm run build` — Production build + TypeScript verification
-- `npm run start` — Serve production build
-- `npm run lint` — Run ESLint across the repo
-- `npm test` — Run unit tests (`features/wall/wall-rules.test.ts` and `features/wall/supabase-post-service.test.ts`)
-- `npx tsc --noEmit` — Standalone TypeScript typecheck
-
-## Design Reference
-
-- Visual layout, colors (`#3b5998`, `#2c4477`, `#d8dfea`), typography, inline SVG portrait and retro ads, tabs (`Wall`, `Info`, `Photos`, `Notes`, `Boxes`), and responsive breakpoints are preserved from `public/assets/aistudio/WALL08_2008_FACEBOOK_WALL_UI_5ab6d653.html`.
-
-## Known Limitations & Security Tradeoffs
-
-- **Anonymous public posting & spam risk:** By design for this public guestbook, `anon` has direct `INSERT (author, message)` access protected by RLS and CHECK constraints. While RLS and column privileges prevent `UPDATE`, `DELETE`, invalid lengths, whitespace-only posts, and `id`/`created_at` spoofing, **RLS alone does not prevent automated spam or flooding**. A browser-side cooldown is not real security. If promoted publicly at scale, move inserts behind a Next.js API route with durable IP/device rate limiting and Cloudflare Turnstile verification, and revoke direct `anon` `INSERT`.
-- **Unverified display names:** Visitor display names are stored locally in `localStorage` (`wall08.name.v1`), capped at 24 characters, and are not authenticated.
-- **Demo extras disabled in live mode:** The Stage 1 local-only `Like` and `Comment` controls are disabled via `WALL_CAPABILITIES.demoInteractionsEnabled = false` so the live app never implies cross-visitor persistence for those non-database actions.
-- **Feed & search scope:** The feed queries and displays the latest **50** posts (`created_at DESC, id DESC`). Client-side search filters within those 50 loaded posts, and activity counts are labeled as loaded posts.
-
-## Two-Browser Realtime Demo Steps
-
-1. Open the deployed URL in **Browser Window A** and **Browser Window B** (desktop and/or mobile width).
-2. Confirm both show **Live · Newest first · latest 50** in the feed toolbar.
-3. Optionally click **Change display name** in Window A and save a name.
-4. Type a message (1–280 characters) and click **Share** in Window A.
-5. Verify the post appears immediately at the top of Window A (no duplicate) **and** appears in Window B **without refreshing**.
-6. Refresh Window B and confirm the post persists from Supabase Postgres.
+```bash
+npm install
+npm test
+npx tsc --noEmit
+npm run lint
+npm run build
+npm run dev
+```

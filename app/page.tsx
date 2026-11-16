@@ -1,5 +1,5 @@
-import { WallApp } from '@/components/WallApp';
+import { BoardApp } from '@/components/BoardApp';
 
 export default function HomePage() {
-  return <WallApp />;
+  return <BoardApp />;
 }
