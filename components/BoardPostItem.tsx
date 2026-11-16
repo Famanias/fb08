@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import {
   MAX_POST_LENGTH,
+  formatPostAuthorLabel,
   validateBoardMessage,
 } from '@/features/board/board-rules';
 import { BoardPost } from '@/features/board/board.types';
@@ -29,7 +30,8 @@ export function BoardPostItem({
   const [showHistory, setShowHistory] = useState(false);
 
   const isDeleted = Boolean(post.deleted_at);
-  const [bg, fg] = getAvatarColors(post.anon_tag);
+  const authorLabel = formatPostAuthorLabel(post);
+  const [bg, fg] = getAvatarColors(post.display_name || post.anon_tag);
   const edits = post.edits ?? [];
   const check = validateBoardMessage(draftMessage);
 
@@ -82,7 +84,7 @@ export function BoardPostItem({
             #{post.post_number}
             {post.post_number === 1 ? ' (OP)' : ''}
           </span>
-          <span className="post-author">Anonymous #{post.anon_tag}</span>
+          <span className="post-author">{authorLabel}</span>
           {post.is_mine ? <span className="mine-badge">You</span> : null}
           {post.edited_at && !isDeleted ? (
             <span className="post-pinned" title={formatFullTimestamp(post.edited_at)}>

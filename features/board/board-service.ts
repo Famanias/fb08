@@ -34,9 +34,14 @@ export interface BoardService {
   }>;
   createThread(
     title: string,
-    message: string
+    message: string,
+    anonymous?: boolean
   ): Promise<{ thread: BoardThreadSummary; post: BoardPost }>;
-  createReply(threadId: string, message: string): Promise<BoardPost>;
+  createReply(
+    threadId: string,
+    message: string,
+    anonymous?: boolean
+  ): Promise<BoardPost>;
   editPost(
     postId: string,
     message: string
@@ -227,23 +232,28 @@ export class SupabaseBoardService implements BoardService {
 
   async createThread(
     title: string,
-    message: string
+    message: string,
+    anonymous: boolean = false
   ): Promise<{ thread: BoardThreadSummary; post: BoardPost }> {
     return this.requestJson<{ thread: BoardThreadSummary; post: BoardPost }>(
       '/api/threads',
       {
         method: 'POST',
-        body: JSON.stringify({ title, message }),
+        body: JSON.stringify({ title, message, anonymous }),
       }
     );
   }
 
-  async createReply(threadId: string, message: string): Promise<BoardPost> {
+  async createReply(
+    threadId: string,
+    message: string,
+    anonymous: boolean = false
+  ): Promise<BoardPost> {
     const data = await this.requestJson<{ post: BoardPost }>(
       `/api/threads/${encodeURIComponent(threadId)}/posts`,
       {
         method: 'POST',
-        body: JSON.stringify({ message }),
+        body: JSON.stringify({ message, anonymous }),
       }
     );
     return data.post;
@@ -336,7 +346,10 @@ export class SupabaseBoardService implements BoardService {
           if (isCleanedUp || !payload || typeof payload !== 'object') return;
           const p = payload as { eventType?: string; new?: unknown };
           if ((p.eventType === 'INSERT' || p.eventType === 'UPDATE') && isPostRow(p.new)) {
-            callbacks.onPostUpsert?.(p.new);
+            const sanitizedPost: BoardPost = p.new.display_name
+              ? { ...p.new, anon_tag: '' }
+              : p.new;
+            callbacks.onPostUpsert?.(sanitizedPost);
           }
         }
       )

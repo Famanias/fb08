@@ -96,7 +96,7 @@ export function AccountSidebar({
                 Signed in as <strong id="signed-in-username">{user.username}</strong>
               </div>
               <p className="auth-note">
-                Posts show an anonymous per-thread ID. Your username stays hidden.
+                Posts show your username by default. Check &ldquo;Post anonymously&rdquo; on any post to hide it behind a per-thread ID.
               </p>
               <div style={{ marginTop: 9 }}>
                 <button

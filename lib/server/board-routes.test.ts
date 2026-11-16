@@ -36,6 +36,7 @@ function createMemoryStore(): BoardServerStore {
     post_number: number;
     author_user_id: string;
     anon_tag: string;
+    display_name: string | null;
     message: string;
     created_at: string;
     edited_at: string | null;
@@ -80,7 +81,8 @@ function createMemoryStore(): BoardServerStore {
         const op = posts.find((p) => p.thread_id === t.id && p.post_number === 1);
         return {
           ...t,
-          op_anon_tag: op?.anon_tag,
+          op_anon_tag: op?.display_name ? undefined : op?.anon_tag,
+          op_display_name: op?.display_name ?? null,
           op_preview: op?.message,
         };
       });
@@ -113,6 +115,7 @@ function createMemoryStore(): BoardServerStore {
         post_number: 1,
         author_user_id: input.userId,
         anon_tag: input.anonTag,
+        display_name: input.displayName,
         message: input.message,
         created_at: now,
         edited_at: null,
@@ -120,7 +123,15 @@ function createMemoryStore(): BoardServerStore {
       };
       threads.push(thread);
       posts.push(post);
-      return { thread, post };
+      return {
+        thread: {
+          ...thread,
+          op_anon_tag: input.displayName ? undefined : input.anonTag,
+          op_display_name: input.displayName,
+          op_preview: input.message,
+        },
+        post,
+      };
     },
     async createReply(input) {
       const thread = threads.find((t) => t.id === input.threadId);
@@ -136,6 +147,7 @@ function createMemoryStore(): BoardServerStore {
         post_number: nextNum,
         author_user_id: input.userId,
         anon_tag: input.anonTag,
+        display_name: input.displayName,
         message: input.message,
         created_at: now,
         edited_at: null,
@@ -302,12 +314,16 @@ test('threads, replies, anonymity, edit history, reply deletion, and dedicated t
   );
   assert.equal(unauthCreate.status, 401);
 
-  // Alice creates thread 1 & thread 2
+  // Alice creates thread 1 (anonymous: true) & thread 2 (anonymous: true)
   const t1Res = await handleCreateThread(
     makeReq('http://localhost/api/threads', {
       method: 'POST',
       cookie: aliceCookie,
-      body: JSON.stringify({ title: 'Late night ramen?', message: 'Open past midnight?' }),
+      body: JSON.stringify({
+        title: 'Late night ramen?',
+        message: 'Open past midnight?',
+        anonymous: true,
+      }),
     }),
     deps
   );
@@ -316,13 +332,14 @@ test('threads, replies, anonymity, edit history, reply deletion, and dedicated t
   const t1Raw = JSON.stringify(t1Json);
   assert.equal(t1Raw.includes('Alice'), false);
   assert.equal(t1Raw.includes('author_user_id'), false);
+  assert.equal(t1Json.post.display_name, null);
   assert.match(t1Json.post.anon_tag, /^[0-9a-f]{6}$/);
 
   const t2Res = await handleCreateThread(
     makeReq('http://localhost/api/threads', {
       method: 'POST',
       cookie: aliceCookie,
-      body: JSON.stringify({ title: 'Second thread', message: 'Hi again' }),
+      body: JSON.stringify({ title: 'Second thread', message: 'Hi again', anonymous: true }),
     }),
     deps
   );
@@ -333,20 +350,63 @@ test('threads, replies, anonymity, edit history, reply deletion, and dedicated t
     'Same user must receive distinct anon_tag across threads'
   );
 
-  // Bob replies in thread 1
+  // Default createReply without anonymous flag defaults to named (display_name = Bob) and hides anon_tag
+  const namedReplyRes = await handleCreateReply(
+    makeReq(`http://localhost/api/threads/${t1Json.thread.id}/posts`, {
+      method: 'POST',
+      cookie: bobCookie,
+      body: JSON.stringify({ message: 'Named hello from Bob' }),
+    }),
+    t1Json.thread.id,
+    deps
+  );
+  assert.equal(namedReplyRes.status, 201);
+  const namedReplyJson = await namedReplyRes.json();
+  assert.equal(namedReplyJson.post.display_name, 'Bob');
+  assert.equal(namedReplyJson.post.anon_tag, '');
+
+  // Invalid anonymous flag fails 400
+  const badAnonFlag = await handleCreateThread(
+    makeReq('http://localhost/api/threads', {
+      method: 'POST',
+      cookie: aliceCookie,
+      body: JSON.stringify({ title: 'Bad', message: 'Flag', anonymous: 'yes' }),
+    }),
+    deps
+  );
+  assert.equal(badAnonFlag.status, 400);
+
+  // Bob anonymous reply in thread 1 must not correlate with named reply or OP tag
   const replyRes = await handleCreateReply(
     makeReq(`http://localhost/api/threads/${t1Json.thread.id}/posts`, {
       method: 'POST',
       cookie: bobCookie,
-      body: JSON.stringify({ message: 'Try 4th Ave' }),
+      body: JSON.stringify({ message: 'Try 4th Ave', anonymous: true }),
     }),
     t1Json.thread.id,
     deps
   );
   assert.equal(replyRes.status, 201);
   const replyJson = await replyRes.json();
-  assert.equal(replyJson.post.post_number, 2);
+  assert.equal(replyJson.post.post_number, 3);
+  assert.equal(replyJson.post.display_name, null);
   assert.notEqual(replyJson.post.anon_tag, t1Json.post.anon_tag);
+
+  // Omitting anonymous on thread defaults to named (display_name = Alice)
+  const namedThreadRes = await handleCreateThread(
+    makeReq('http://localhost/api/threads', {
+      method: 'POST',
+      cookie: aliceCookie,
+      body: JSON.stringify({ title: 'Named thread', message: 'Posting openly' }),
+    }),
+    deps
+  );
+  assert.equal(namedThreadRes.status, 201);
+  const namedThreadJson = await namedThreadRes.json();
+  assert.equal(namedThreadJson.thread.op_display_name, 'Alice');
+  assert.equal(namedThreadJson.thread.op_anon_tag, undefined);
+  assert.equal(namedThreadJson.post.display_name, 'Alice');
+  assert.equal(namedThreadJson.post.anon_tag, '');
 
   // Alice cannot edit Bob's reply
   const forbiddenEdit = await handleEditPost(
@@ -472,8 +532,8 @@ test('threads, replies, anonymity, edit history, reply deletion, and dedicated t
     deps
   );
   const listJson = await listForAlice.json();
-  assert.equal(listJson.threads.length, 1);
-  assert.deepEqual(listJson.ownedThreadIds, [t2Json.thread.id]);
+  assert.equal(listJson.threads.length, 2);
+  assert.deepEqual(listJson.ownedThreadIds, [namedThreadJson.thread.id, t2Json.thread.id]);
 
   // Signed token for non-existent user does not grant access
   const ghostToken = signSessionToken(

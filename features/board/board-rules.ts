@@ -129,6 +129,8 @@ export function mergeThreadList(
       ...prev,
       ...thread,
       op_anon_tag: thread.op_anon_tag ?? prev?.op_anon_tag,
+      op_display_name:
+        thread.op_display_name !== undefined ? thread.op_display_name : prev?.op_display_name,
       op_preview: thread.op_preview ?? prev?.op_preview,
       is_mine: ownedIds ? ownedIds.has(thread.id) : (thread.is_mine ?? prev?.is_mine ?? false),
     });
@@ -212,6 +214,7 @@ export function filterThreads(
     (thread) =>
       thread.title.toLowerCase().includes(term) ||
       (thread.op_preview ?? '').toLowerCase().includes(term) ||
+      (thread.op_display_name ?? '').toLowerCase().includes(term) ||
       (thread.op_anon_tag ?? '').toLowerCase().includes(term)
   );
 }
@@ -224,9 +227,16 @@ export function filterPostsInThread(posts: BoardPost[], query: string): BoardPos
   return posts.filter(
     (post) =>
       post.message.toLowerCase().includes(term) ||
+      (post.display_name ?? '').toLowerCase().includes(term) ||
       post.anon_tag.toLowerCase().includes(term) ||
       `#${post.post_number}`.includes(term)
   );
+}
+
+export function formatPostAuthorLabel(
+  post: Pick<BoardPost, 'display_name' | 'anon_tag'>
+): string {
+  return post.display_name ? post.display_name : `Anonymous #${post.anon_tag}`;
 }
 
 export function getBoardStatusLabel(status: BoardConnectionStatus): string {

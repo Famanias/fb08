@@ -10,6 +10,7 @@ export type BoardThreadSummary = {
   created_at: string;
   bumped_at: string;
   op_anon_tag?: string;
+  op_display_name?: string | null;
   op_preview?: string;
   is_mine?: boolean;
 };
@@ -26,6 +27,7 @@ export type BoardPost = {
   thread_id: string;
   post_number: number;
   anon_tag: string;
+  display_name?: string | null;
   message: string;
   created_at: string;
   edited_at: string | null;

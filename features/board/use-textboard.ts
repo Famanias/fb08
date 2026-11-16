@@ -41,8 +41,8 @@ export interface UseTextboardResult {
   loginAccount: (username: string, password: string) => Promise<boolean>;
   logoutAccount: () => Promise<void>;
   selectThread: (threadId: string | null) => void;
-  createThread: (title: string, message: string) => Promise<string | null>;
-  createReply: (message: string) => Promise<boolean>;
+  createThread: (title: string, message: string, anonymous?: boolean) => Promise<string | null>;
+  createReply: (message: string, anonymous?: boolean) => Promise<boolean>;
   editPost: (postId: string, message: string) => Promise<boolean>;
   deleteReply: (postId: string) => Promise<boolean>;
   deleteSelectedThread: () => Promise<boolean>;
@@ -173,7 +173,10 @@ export function useTextboard(
                 t.id === incomingPost.thread_id
                   ? {
                       ...t,
-                      op_anon_tag: t.op_anon_tag ?? incomingPost.anon_tag,
+                      op_display_name: incomingPost.display_name ?? null,
+                      op_anon_tag: incomingPost.display_name
+                        ? undefined
+                        : (t.op_anon_tag ?? incomingPost.anon_tag),
                       op_preview: incomingPost.message,
                     }
                   : t
@@ -348,13 +351,17 @@ export function useTextboard(
   }, [onNotify, service]);
 
   const createThread = useCallback(
-    async (title: string, message: string): Promise<string | null> => {
+    async (
+      title: string,
+      message: string,
+      anonymous: boolean = false
+    ): Promise<string | null> => {
       if (submittingRef.current) return null;
       submittingRef.current = true;
       setIsSubmitting(true);
       setErrorMessage(null);
       try {
-        const { thread, post } = await service.createThread(title, message);
+        const { thread, post } = await service.createThread(title, message, anonymous);
         if (!mountedRef.current) return null;
         const nextOwned = new Set(ownedThreadIds);
         nextOwned.add(thread.id);
@@ -365,7 +372,7 @@ export function useTextboard(
         setOwnedPostIds(new Set([post.id]));
         setIsThreadOwner(true);
         setThreadPosts([{ ...post, edits: [], is_mine: true }]);
-        onNotify?.('Thread created anonymously.');
+        onNotify?.(anonymous ? 'Thread created anonymously.' : 'Thread created.');
         return thread.id;
       } catch (err: unknown) {
         if (mountedRef.current) {
@@ -383,14 +390,14 @@ export function useTextboard(
   );
 
   const createReply = useCallback(
-    async (message: string): Promise<boolean> => {
+    async (message: string, anonymous: boolean = false): Promise<boolean> => {
       const threadId = selectedThreadIdRef.current;
       if (!threadId || submittingRef.current) return false;
       submittingRef.current = true;
       setIsSubmitting(true);
       setErrorMessage(null);
       try {
-        const post = await service.createReply(threadId, message);
+        const post = await service.createReply(threadId, message, anonymous);
         if (!mountedRef.current) return false;
         const nextOwned = new Set(ownedPostIds);
         nextOwned.add(post.id);
@@ -412,7 +419,11 @@ export function useTextboard(
             MAX_VISIBLE_THREADS
           )
         );
-        onNotify?.(`Reply #${post.post_number} posted anonymously.`);
+        onNotify?.(
+          anonymous
+            ? `Reply #${post.post_number} posted anonymously.`
+            : `Reply #${post.post_number} posted.`
+        );
         return true;
       } catch (err: unknown) {
         if (mountedRef.current) {

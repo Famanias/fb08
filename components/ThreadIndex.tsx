@@ -26,7 +26,11 @@ interface ThreadIndexProps {
   isSubmitting: boolean;
   errorMessage: string | null;
   onSelectThread: (threadId: string) => void;
-  onCreateThread: (title: string, message: string) => Promise<string | null>;
+  onCreateThread: (
+    title: string,
+    message: string,
+    anonymous: boolean
+  ) => Promise<string | null>;
   onRetry: () => Promise<void>;
   onClearError: () => void;
 }
@@ -47,6 +51,7 @@ export function ThreadIndex({
 }: ThreadIndexProps) {
   const [title, setTitle] = useState('');
   const [message, setMessage] = useState('');
+  const [isAnonymous, setIsAnonymous] = useState(false);
 
   const titleCheck = validateThreadTitle(title);
   const msgCheck = validateBoardMessage(message);
@@ -55,10 +60,11 @@ export function ThreadIndex({
 
   async function submitThread() {
     if (!canSubmit) return;
-    const threadId = await onCreateThread(titleCheck.value, msgCheck.value);
+    const threadId = await onCreateThread(titleCheck.value, msgCheck.value, isAnonymous);
     if (threadId) {
       setTitle('');
       setMessage('');
+      setIsAnonymous(false);
     }
   }
 
@@ -84,7 +90,7 @@ export function ThreadIndex({
             <span>+ Start a New Thread</span>
             <span className="privacy">
               <Lock className="svg-icon" strokeWidth={2.2} />
-              Posted anonymously
+              {isAnonymous ? 'Posted anonymously' : `Posting as ${user.username}`}
             </span>
           </div>
           <div style={{ marginBottom: 8 }}>
@@ -115,7 +121,21 @@ export function ThreadIndex({
           />
           <div className="composer-tools">
             <div className="tool-left">
-              <span>Per-thread anonymous ID assigned on post</span>
+              <label className="anon-toggle-label" htmlFor="thread-anonymous-toggle">
+                <input
+                  id="thread-anonymous-toggle"
+                  type="checkbox"
+                  checked={isAnonymous}
+                  disabled={isSubmitting}
+                  onChange={(e) => setIsAnonymous(e.target.checked)}
+                />
+                <span>Post anonymously</span>
+              </label>
+              <span className="anon-toggle-hint">
+                {isAnonymous
+                  ? 'Per-thread anonymous ID assigned on post'
+                  : `Showing username: ${user.username}`}
+              </span>
             </div>
             <div className="tool-right">
               <span className={`counter${remaining <= 40 ? ' low' : ''}`}>
@@ -127,7 +147,11 @@ export function ThreadIndex({
                 className="btn-share"
                 disabled={!canSubmit}
               >
-                {isSubmitting ? 'Posting...' : 'Post Thread as Anonymous'}
+                {isSubmitting
+                  ? 'Posting...'
+                  : isAnonymous
+                    ? 'Post Thread Anonymously'
+                    : 'Post Thread'}
               </button>
             </div>
           </div>
@@ -136,7 +160,7 @@ export function ThreadIndex({
         <div className="gate-banner" id="guest-thread-banner">
           <Lock className="svg-icon" style={{ marginRight: 5 }} />
           You are browsing as a read-only visitor. <strong>Sign in or register</strong>{' '}
-          in the Account box to start a thread or reply anonymously.
+          in the Account box to start a thread or reply.
         </div>
       )}
 
@@ -209,7 +233,9 @@ export function ThreadIndex({
                 <p className="thread-snippet">{thread.op_preview}</p>
               ) : null}
               <div className="thread-meta">
-                {thread.op_anon_tag ? (
+                {thread.op_display_name ? (
+                  <span>OP {thread.op_display_name}</span>
+                ) : thread.op_anon_tag ? (
                   <span>OP Anonymous #{thread.op_anon_tag}</span>
                 ) : null}
                 <span title={formatFullTimestamp(thread.bumped_at)}>

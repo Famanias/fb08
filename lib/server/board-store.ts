@@ -16,6 +16,7 @@ export interface StoredThreadRecord {
   created_at: string;
   bumped_at: string;
   op_anon_tag?: string;
+  op_display_name?: string | null;
   op_preview?: string;
 }
 
@@ -25,6 +26,7 @@ export interface StoredPostRecord {
   post_number: number;
   author_user_id: string;
   anon_tag: string;
+  display_name: string | null;
   message: string;
   created_at: string;
   edited_at: string | null;
@@ -57,12 +59,14 @@ export interface BoardServerStore {
     title: string;
     message: string;
     anonTag: string;
+    displayName: string | null;
   }): Promise<{ thread: StoredThreadRecord; post: StoredPostRecord }>;
   createReply(input: {
     userId: string;
     threadId: string;
     message: string;
     anonTag: string;
+    displayName: string | null;
   }): Promise<StoredPostRecord | null>;
   editPost(input: {
     userId: string;
@@ -150,21 +154,31 @@ export function createSupabaseBoardStore(
       const ids = threads.map((t) => t.id);
       const { data: opRows, error: opErr } = await adminClient
         .from('board_posts')
-        .select('thread_id, anon_tag, message')
+        .select('thread_id, anon_tag, display_name, message')
         .in('thread_id', ids)
         .eq('post_number', 1);
       assertNoDbError(opErr, 'Failed to load opening posts');
 
-      const opByThreadId = new Map<string, { anon_tag: string; message: string }>();
-      for (const op of (opRows ?? []) as Array<{ thread_id: string; anon_tag: string; message: string }>) {
+      const opByThreadId = new Map<
+        string,
+        { anon_tag: string; display_name: string | null; message: string }
+      >();
+      for (const op of (opRows ?? []) as Array<{
+        thread_id: string;
+        anon_tag: string;
+        display_name: string | null;
+        message: string;
+      }>) {
         opByThreadId.set(op.thread_id, op);
       }
 
       return threads.map((thread) => {
         const op = opByThreadId.get(thread.id);
+        const opDisplayName = op?.display_name ?? null;
         return {
           ...thread,
-          op_anon_tag: op?.anon_tag,
+          op_anon_tag: opDisplayName ? undefined : op?.anon_tag,
+          op_display_name: opDisplayName,
           op_preview: op?.message,
         };
       });
@@ -183,7 +197,9 @@ export function createSupabaseBoardStore(
 
       const { data: postRows, error: postsErr } = await adminClient
         .from('board_posts')
-        .select('id, thread_id, post_number, author_user_id, anon_tag, message, created_at, edited_at, deleted_at')
+        .select(
+          'id, thread_id, post_number, author_user_id, anon_tag, display_name, message, created_at, edited_at, deleted_at'
+        )
         .eq('thread_id', threadId)
         .order('post_number', { ascending: true });
       assertNoDbError(postsErr, 'Failed to load thread posts');
@@ -216,6 +232,7 @@ export function createSupabaseBoardStore(
         p_title: input.title,
         p_message: input.message,
         p_anon_tag: input.anonTag,
+        p_display_name: input.displayName,
       });
       assertNoDbError(error, 'Failed to create thread');
 
@@ -235,7 +252,8 @@ export function createSupabaseBoardStore(
           reply_count: 1,
           created_at: typed.created_at,
           bumped_at: typed.bumped_at,
-          op_anon_tag: input.anonTag,
+          op_anon_tag: input.displayName ? undefined : input.anonTag,
+          op_display_name: input.displayName,
           op_preview: input.message,
         },
         post: {
@@ -244,6 +262,7 @@ export function createSupabaseBoardStore(
           post_number: 1,
           author_user_id: input.userId,
           anon_tag: input.anonTag,
+          display_name: input.displayName,
           message: input.message,
           created_at: typed.created_at,
           edited_at: null,
@@ -258,6 +277,7 @@ export function createSupabaseBoardStore(
         p_thread_id: input.threadId,
         p_message: input.message,
         p_anon_tag: input.anonTag,
+        p_display_name: input.displayName,
       });
 
       if (error) {
@@ -275,6 +295,7 @@ export function createSupabaseBoardStore(
         post_number: typed.post_number,
         author_user_id: input.userId,
         anon_tag: input.anonTag,
+        display_name: input.displayName,
         message: input.message,
         created_at: typed.created_at,
         edited_at: null,
@@ -305,7 +326,9 @@ export function createSupabaseBoardStore(
 
       const { data: updatedPost, error: fetchErr } = await adminClient
         .from('board_posts')
-        .select('id, thread_id, post_number, author_user_id, anon_tag, message, created_at, edited_at, deleted_at')
+        .select(
+          'id, thread_id, post_number, author_user_id, anon_tag, display_name, message, created_at, edited_at, deleted_at'
+        )
         .eq('id', input.postId)
         .single();
       assertNoDbError(fetchErr, 'Failed to load updated post');

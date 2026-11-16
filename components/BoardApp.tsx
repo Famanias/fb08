@@ -155,8 +155,8 @@ export function BoardApp() {
             )}
 
             <footer className="footer">
-              <span>FB/08 Anonymous Textboard · Live Realtime</span>
-              <span> · Guests read · Members post anonymously</span>
+              <span>FB/08 Textboard · Live Realtime</span>
+              <span> · Guests read · Post with your username or anonymously</span>
             </footer>
           </main>
         </div>

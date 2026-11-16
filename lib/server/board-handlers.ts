@@ -50,13 +50,15 @@ function toPublicThread(
   thread: StoredThreadRecord,
   viewerUserId: string | null
 ): BoardThreadSummary {
+  const opDisplayName = thread.op_display_name ?? null;
   return {
     id: thread.id,
     title: thread.title,
     reply_count: thread.reply_count,
     created_at: thread.created_at,
     bumped_at: thread.bumped_at,
-    op_anon_tag: thread.op_anon_tag,
+    op_anon_tag: opDisplayName ? undefined : thread.op_anon_tag,
+    op_display_name: opDisplayName,
     op_preview: thread.op_preview,
     is_mine: viewerUserId ? thread.author_user_id === viewerUserId : false,
   };
@@ -67,17 +69,40 @@ function toPublicPost(
   viewerUserId: string | null,
   edits?: BoardPostEdit[]
 ): BoardPost {
+  const displayName = post.display_name ?? null;
   return {
     id: post.id,
     thread_id: post.thread_id,
     post_number: post.post_number,
-    anon_tag: post.anon_tag,
+    // Never expose anon_tag on named posts so readers cannot link named and anonymous posts.
+    anon_tag: displayName ? '' : post.anon_tag,
+    display_name: displayName,
     message: post.message,
     created_at: post.created_at,
     edited_at: post.edited_at,
     deleted_at: post.deleted_at,
     ...(edits ? { edits } : {}),
     is_mine: viewerUserId ? post.author_user_id === viewerUserId : false,
+  };
+}
+
+function resolvePostIdentity(
+  user: { id: string; username: string },
+  threadId: string,
+  anonymousFlag: unknown,
+  secret?: string
+): { anonTag: string; displayName: string | null } {
+  const isAnonymous = anonymousFlag === true;
+  if (isAnonymous) {
+    return {
+      anonTag: deriveThreadAnonTag(user.id, threadId, secret),
+      displayName: null,
+    };
+  }
+  return {
+    // Use an unlinkable random hex tag in storage when posting with username.
+    anonTag: crypto.randomBytes(3).toString('hex'),
+    displayName: user.username,
   };
 }
 
@@ -180,6 +205,9 @@ export async function handleCreateThread(req: Request, depsInput?: HandlerDeps):
   if (!body || typeof body.title !== 'string' || typeof body.message !== 'string') {
     return jsonResponse({ error: 'Thread subject and opening message are required.' }, 400);
   }
+  if (body.anonymous !== undefined && typeof body.anonymous !== 'boolean') {
+    return jsonResponse({ error: 'anonymous must be a boolean.' }, 400);
+  }
 
   const titleCheck = validateThreadTitle(body.title);
   if (!titleCheck.valid) {
@@ -192,13 +220,19 @@ export async function handleCreateThread(req: Request, depsInput?: HandlerDeps):
   }
 
   const threadId = crypto.randomUUID();
-  const anonTag = deriveThreadAnonTag(user.id, threadId, secret);
+  const { anonTag, displayName } = resolvePostIdentity(
+    user,
+    threadId,
+    body.anonymous,
+    secret
+  );
   const created = await store.createThread({
     threadId,
     userId: user.id,
     title: titleCheck.value,
     message: msgCheck.value,
     anonTag,
+    displayName,
   });
 
   return jsonResponse(
@@ -297,18 +331,27 @@ export async function handleCreateReply(
   if (!body || typeof body.message !== 'string') {
     return jsonResponse({ error: 'Reply message is required.' }, 400);
   }
+  if (body.anonymous !== undefined && typeof body.anonymous !== 'boolean') {
+    return jsonResponse({ error: 'anonymous must be a boolean.' }, 400);
+  }
 
   const msgCheck = validateBoardMessage(body.message);
   if (!msgCheck.valid) {
     return jsonResponse({ error: msgCheck.error }, 400);
   }
 
-  const anonTag = deriveThreadAnonTag(user.id, threadId, secret);
+  const { anonTag, displayName } = resolvePostIdentity(
+    user,
+    threadId,
+    body.anonymous,
+    secret
+  );
   const post = await store.createReply({
     userId: user.id,
     threadId,
     message: msgCheck.value,
     anonTag,
+    displayName,
   });
 
   if (!post) {

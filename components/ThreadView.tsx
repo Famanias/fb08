@@ -27,7 +27,7 @@ interface ThreadViewProps {
   isSubmitting: boolean;
   errorMessage: string | null;
   onBack: () => void;
-  onCreateReply: (message: string) => Promise<boolean>;
+  onCreateReply: (message: string, anonymous: boolean) => Promise<boolean>;
   onEditPost: (postId: string, message: string) => Promise<boolean>;
   onDeleteReply: (postId: string) => Promise<boolean>;
   onDeleteThread: () => Promise<boolean>;
@@ -55,6 +55,7 @@ export function ThreadView({
   onClearError,
 }: ThreadViewProps) {
   const [replyText, setReplyText] = useState('');
+  const [isAnonymous, setIsAnonymous] = useState(false);
   const [confirmThreadDelete, setConfirmThreadDelete] = useState(false);
   const [isDeletingThread, setIsDeletingThread] = useState(false);
 
@@ -63,9 +64,10 @@ export function ThreadView({
 
   async function submitReply() {
     if (!msgCheck.valid || isSubmitting) return;
-    const ok = await onCreateReply(msgCheck.value);
+    const ok = await onCreateReply(msgCheck.value, isAnonymous);
     if (ok) {
       setReplyText('');
+      setIsAnonymous(false);
     }
   }
 
@@ -201,7 +203,11 @@ export function ThreadView({
               id="reply-message"
               rows={3}
               maxLength={MAX_POST_LENGTH}
-              placeholder="Write an anonymous reply in this thread..."
+              placeholder={
+                isAnonymous
+                  ? 'Write an anonymous reply in this thread...'
+                  : `Reply as ${user.username}...`
+              }
               value={replyText}
               onChange={(e) => {
                 setReplyText(e.target.value);
@@ -211,9 +217,21 @@ export function ThreadView({
             />
             <div className="composer-tools">
               <div className="tool-left">
-                <span className="privacy">
-                  <Lock className="svg-icon" strokeWidth={2.2} />
-                  Same thread ID for your replies here
+                <label className="anon-toggle-label" htmlFor="reply-anonymous-toggle">
+                  <input
+                    id="reply-anonymous-toggle"
+                    type="checkbox"
+                    checked={isAnonymous}
+                    disabled={isSubmitting}
+                    onChange={(e) => setIsAnonymous(e.target.checked)}
+                  />
+                  <span>Post anonymously</span>
+                </label>
+                <span className="anon-toggle-hint">
+                  <Lock className="svg-icon" strokeWidth={2.2} style={{ marginRight: 4 }} />
+                  {isAnonymous
+                    ? 'Same anonymous thread ID for your anon replies here'
+                    : `Posting as ${user.username}`}
                 </span>
               </div>
               <div className="tool-right">
@@ -226,7 +244,11 @@ export function ThreadView({
                   className="btn-share"
                   disabled={!msgCheck.valid || isSubmitting}
                 >
-                  {isSubmitting ? 'Posting...' : 'Post Reply as Anonymous'}
+                  {isSubmitting
+                    ? 'Posting...'
+                    : isAnonymous
+                      ? 'Post Anonymously'
+                      : 'Post Reply'}
                 </button>
               </div>
             </div>
@@ -234,7 +256,7 @@ export function ThreadView({
         ) : (
           <div className="gate-banner" id="guest-reply-banner">
             <Lock className="svg-icon" style={{ marginRight: 5 }} />
-            Sign in or register in the Account box to post an anonymous reply in this thread.
+            Sign in or register in the Account box to reply in this thread.
           </div>
         )}
       </div>

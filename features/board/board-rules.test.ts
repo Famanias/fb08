@@ -8,6 +8,7 @@ import {
   MAX_VISIBLE_THREADS,
   filterPostsInThread,
   filterThreads,
+  formatPostAuthorLabel,
   mergeThreadList,
   runSingleFlight,
   sortAndMergeThreadPosts,
@@ -266,4 +267,15 @@ test('runSingleFlight blocks concurrent calls on same lock until in-flight call 
   });
   assert.equal(await p3, false);
   assert.equal(executions, 2);
+});
+
+test('formatPostAuthorLabel prefers display_name when present and falls back to Anonymous tag', () => {
+  assert.equal(
+    formatPostAuthorLabel({ display_name: 'Alice', anon_tag: '' }),
+    'Alice'
+  );
+  assert.equal(
+    formatPostAuthorLabel({ display_name: null, anon_tag: 'a4f211' }),
+    'Anonymous #a4f211'
+  );
 });
