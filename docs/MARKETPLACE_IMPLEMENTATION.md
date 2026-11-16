@@ -1,5 +1,7 @@
 # fb/08 Marketplace
 
+At the user's later explicit request, 21 clearly labeled listings with online stock photos were added to the live database. See [demo inventory and photo credits](MARKETPLACE_DEMO_DATA.md) for the manifest, idempotent operator command and verification results.
+
 Marketplace extends the existing Next.js 15 App Router application and the existing Supabase/Vercel projects. Board, People, profiles, session cookies and their write permissions are preserved.
 
 ## Routes and design
