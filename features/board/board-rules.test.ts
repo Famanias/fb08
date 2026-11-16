@@ -9,6 +9,7 @@ import {
   filterPostsInThread,
   filterThreads,
   mergeThreadList,
+  runSingleFlight,
   sortAndMergeThreadPosts,
   sortThreadsByBump,
   validateBoardMessage,
@@ -232,4 +233,37 @@ test('filterThreads and filterPostsInThread match case-insensitively', () => {
     filterPostsInThread(posts, '#1').map((p) => p.id),
     ['p1']
   );
+});
+
+test('runSingleFlight blocks concurrent calls on same lock until in-flight call settles', async () => {
+  const lock = { current: false };
+  let executions = 0;
+  let releaseFirst!: () => void;
+
+  const p1 = runSingleFlight(lock, async () => {
+    executions += 1;
+    await new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    return true;
+  });
+
+  const p2 = runSingleFlight(lock, async () => {
+    executions += 1;
+    return true;
+  });
+
+  assert.equal(await p2, undefined);
+  assert.equal(executions, 1);
+
+  releaseFirst();
+  assert.equal(await p1, true);
+  assert.equal(lock.current, false);
+
+  const p3 = runSingleFlight(lock, async () => {
+    executions += 1;
+    return false;
+  });
+  assert.equal(await p3, false);
+  assert.equal(executions, 2);
 });

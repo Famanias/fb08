@@ -243,3 +243,22 @@ export function getBoardStatusLabel(status: BoardConnectionStatus): string {
       return 'Connection Error';
   }
 }
+
+/**
+ * Prevent double-submit races between click events and async React state updates.
+ * Returns `undefined` when another invocation on `lock` is already active.
+ */
+export async function runSingleFlight<T>(
+  lock: { current: boolean },
+  fn: () => Promise<T>
+): Promise<T | undefined> {
+  if (lock.current) {
+    return undefined;
+  }
+  lock.current = true;
+  try {
+    return await fn();
+  } finally {
+    lock.current = false;
+  }
+}

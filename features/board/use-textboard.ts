@@ -13,6 +13,7 @@ import {
   filterPostsInThread,
   filterThreads,
   mergeThreadList,
+  runSingleFlight,
   sortAndMergeThreadPosts,
 } from './board-rules';
 
@@ -75,6 +76,7 @@ export function useTextboard(
 
   const mountedRef = useRef<boolean>(true);
   const submittingRef = useRef<boolean>(false);
+  const authSubmittingRef = useRef<boolean>(false);
   const selectedThreadIdRef = useRef<string | null>(null);
   const detailSeqRef = useRef<number>(0);
 
@@ -274,67 +276,75 @@ export function useTextboard(
 
   const registerAccount = useCallback(
     async (username: string, password: string): Promise<boolean> => {
-      setIsAuthSubmitting(true);
-      setAuthError(null);
-      try {
-        const nextUser = await service.register(username, password);
-        if (!mountedRef.current) return false;
-        setUser(nextUser);
-        await reconcileAll();
-        onNotify?.(`Registered and signed in as ${nextUser.username}.`);
-        return true;
-      } catch (err: unknown) {
-        if (!mountedRef.current) return false;
-        setAuthError(err instanceof Error ? err.message : 'Registration failed.');
-        return false;
-      } finally {
-        if (mountedRef.current) setIsAuthSubmitting(false);
-      }
+      const result = await runSingleFlight(authSubmittingRef, async () => {
+        setIsAuthSubmitting(true);
+        setAuthError(null);
+        try {
+          const nextUser = await service.register(username, password);
+          if (!mountedRef.current) return false;
+          setUser(nextUser);
+          await reconcileAll();
+          onNotify?.(`Registered and signed in as ${nextUser.username}.`);
+          return true;
+        } catch (err: unknown) {
+          if (!mountedRef.current) return false;
+          setAuthError(err instanceof Error ? err.message : 'Registration failed.');
+          return false;
+        } finally {
+          if (mountedRef.current) setIsAuthSubmitting(false);
+        }
+      });
+      return result ?? false;
     },
     [onNotify, reconcileAll, service]
   );
 
   const loginAccount = useCallback(
     async (username: string, password: string): Promise<boolean> => {
-      setIsAuthSubmitting(true);
-      setAuthError(null);
-      try {
-        const nextUser = await service.login(username, password);
-        if (!mountedRef.current) return false;
-        setUser(nextUser);
-        await reconcileAll();
-        onNotify?.(`Signed in as ${nextUser.username}.`);
-        return true;
-      } catch (err: unknown) {
-        if (!mountedRef.current) return false;
-        setAuthError(err instanceof Error ? err.message : 'Sign in failed.');
-        return false;
-      } finally {
-        if (mountedRef.current) setIsAuthSubmitting(false);
-      }
+      const result = await runSingleFlight(authSubmittingRef, async () => {
+        setIsAuthSubmitting(true);
+        setAuthError(null);
+        try {
+          const nextUser = await service.login(username, password);
+          if (!mountedRef.current) return false;
+          setUser(nextUser);
+          await reconcileAll();
+          onNotify?.(`Signed in as ${nextUser.username}.`);
+          return true;
+        } catch (err: unknown) {
+          if (!mountedRef.current) return false;
+          setAuthError(err instanceof Error ? err.message : 'Sign in failed.');
+          return false;
+        } finally {
+          if (mountedRef.current) setIsAuthSubmitting(false);
+        }
+      });
+      return result ?? false;
     },
     [onNotify, reconcileAll, service]
   );
 
   const logoutAccount = useCallback(async () => {
-    setIsAuthSubmitting(true);
-    try {
-      await service.logout();
-      if (!mountedRef.current) return;
-      setUser(null);
-      setOwnedThreadIds(new Set());
-      setOwnedPostIds(new Set());
-      setIsThreadOwner(false);
-      setThreads((prev) => prev.map((t) => ({ ...t, is_mine: false })));
-      setThreadPosts((prev) => prev.map((p) => ({ ...p, is_mine: false })));
-      onNotify?.('Signed out.');
-    } catch (err: unknown) {
-      if (mountedRef.current) {
-        setAuthError(err instanceof Error ? err.message : 'Could not sign out.');
+    await runSingleFlight(authSubmittingRef, async () => {
+      setIsAuthSubmitting(true);
+      try {
+        await service.logout();
+        if (!mountedRef.current) return;
+        setUser(null);
+        setOwnedThreadIds(new Set());
+        setOwnedPostIds(new Set());
+        setIsThreadOwner(false);
+        setThreads((prev) => prev.map((t) => ({ ...t, is_mine: false })));
+        setThreadPosts((prev) => prev.map((p) => ({ ...p, is_mine: false })));
+        onNotify?.('Signed out.');
+      } catch (err: unknown) {
+        if (mountedRef.current) {
+          setAuthError(err instanceof Error ? err.message : 'Could not sign out.');
+        }
+      } finally {
+        if (mountedRef.current) setIsAuthSubmitting(false);
       }
-    } finally {
-      if (mountedRef.current) setIsAuthSubmitting(false);
-    }
+    });
   }, [onNotify, service]);
 
   const createThread = useCallback(

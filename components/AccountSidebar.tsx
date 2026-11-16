@@ -59,6 +59,7 @@ export function AccountSidebar({
 
   async function handleLoginSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (isAuthSubmitting) return;
     const creds = validateCredentials();
     if (!creds) return;
     const ok = await onLogin(creds.username, creds.password);
@@ -68,6 +69,7 @@ export function AccountSidebar({
   }
 
   async function handleRegisterClick() {
+    if (isAuthSubmitting) return;
     const creds = validateCredentials();
     if (!creds) return;
     const ok = await onRegister(creds.username, creds.password);
@@ -145,7 +147,7 @@ export function AccountSidebar({
                 />
               </div>
               {combinedError ? (
-                <div className="inline-alert" id="auth-error" style={{ marginBottom: 8 }}>
+                <div className="inline-alert" id="auth-error" role="alert" style={{ marginBottom: 8 }}>
                   <span>{combinedError}</span>
                 </div>
               ) : null}
