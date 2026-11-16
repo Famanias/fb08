@@ -27,11 +27,17 @@ export interface StoredPostRecord {
   author_user_id: string;
   anon_tag: string;
   display_name: string | null;
+  parent_post_id: string | null;
+  reply_to_post_id: string | null;
   message: string;
   created_at: string;
   edited_at: string | null;
   deleted_at: string | null;
 }
+
+export type CreateReplyStoreResult =
+  | { status: 'ok'; post: StoredPostRecord }
+  | { status: 'thread_not_found' | 'parent_not_found' | 'cannot_reply_to_op' | 'parent_deleted' };
 
 export interface StoredPostEditRecord {
   id: string;
@@ -67,7 +73,9 @@ export interface BoardServerStore {
     message: string;
     anonTag: string;
     displayName: string | null;
-  }): Promise<StoredPostRecord | null>;
+    parentPostId?: string | null;
+    replyToPostId?: string | null;
+  }): Promise<CreateReplyStoreResult>;
   editPost(input: {
     userId: string;
     postId: string;
@@ -198,7 +206,7 @@ export function createSupabaseBoardStore(
       const { data: postRows, error: postsErr } = await adminClient
         .from('board_posts')
         .select(
-          'id, thread_id, post_number, author_user_id, anon_tag, display_name, message, created_at, edited_at, deleted_at'
+          'id, thread_id, post_number, author_user_id, anon_tag, display_name, parent_post_id, reply_to_post_id, message, created_at, edited_at, deleted_at'
         )
         .eq('thread_id', threadId)
         .order('post_number', { ascending: true });
@@ -263,6 +271,8 @@ export function createSupabaseBoardStore(
           author_user_id: input.userId,
           anon_tag: input.anonTag,
           display_name: input.displayName,
+          parent_post_id: null,
+          reply_to_post_id: null,
           message: input.message,
           created_at: typed.created_at,
           edited_at: null,
@@ -278,28 +288,53 @@ export function createSupabaseBoardStore(
         p_message: input.message,
         p_anon_tag: input.anonTag,
         p_display_name: input.displayName,
+        p_parent_post_id: input.parentPostId ?? null,
+        p_reply_to_post_id: input.replyToPostId ?? null,
       });
 
       if (error) {
+        if (error.message.includes('CANNOT_REPLY_TO_OP')) {
+          return { status: 'cannot_reply_to_op' };
+        }
+        if (error.message.includes('PARENT_DELETED')) {
+          return { status: 'parent_deleted' };
+        }
+        if (
+          error.message.includes('PARENT_NOT_FOUND') ||
+          error.message.includes('REPLY_TARGET_INVALID')
+        ) {
+          return { status: 'parent_not_found' };
+        }
         if (error.code === 'P0002' || error.message.includes('THREAD_NOT_FOUND')) {
-          return null;
+          return { status: 'thread_not_found' };
         }
         throw new Error(`Failed to create reply: ${error.message}`);
       }
 
       const row = Array.isArray(data) ? data[0] : data;
-      const typed = row as { post_id: string; post_number: number; created_at: string };
+      const typed = row as {
+        post_id: string;
+        post_number: number;
+        created_at: string;
+        parent_post_id: string | null;
+        reply_to_post_id: string | null;
+      };
       return {
-        id: typed.post_id,
-        thread_id: input.threadId,
-        post_number: typed.post_number,
-        author_user_id: input.userId,
-        anon_tag: input.anonTag,
-        display_name: input.displayName,
-        message: input.message,
-        created_at: typed.created_at,
-        edited_at: null,
-        deleted_at: null,
+        status: 'ok',
+        post: {
+          id: typed.post_id,
+          thread_id: input.threadId,
+          post_number: typed.post_number,
+          author_user_id: input.userId,
+          anon_tag: input.anonTag,
+          display_name: input.displayName,
+          parent_post_id: typed.parent_post_id ?? null,
+          reply_to_post_id: typed.reply_to_post_id ?? null,
+          message: input.message,
+          created_at: typed.created_at,
+          edited_at: null,
+          deleted_at: null,
+        },
       };
     },
 
@@ -327,7 +362,7 @@ export function createSupabaseBoardStore(
       const { data: updatedPost, error: fetchErr } = await adminClient
         .from('board_posts')
         .select(
-          'id, thread_id, post_number, author_user_id, anon_tag, display_name, message, created_at, edited_at, deleted_at'
+          'id, thread_id, post_number, author_user_id, anon_tag, display_name, parent_post_id, reply_to_post_id, message, created_at, edited_at, deleted_at'
         )
         .eq('id', input.postId)
         .single();

@@ -37,6 +37,8 @@ function createMemoryStore(): BoardServerStore {
     author_user_id: string;
     anon_tag: string;
     display_name: string | null;
+    parent_post_id: string | null;
+    reply_to_post_id: string | null;
     message: string;
     created_at: string;
     edited_at: string | null;
@@ -116,6 +118,8 @@ function createMemoryStore(): BoardServerStore {
         author_user_id: input.userId,
         anon_tag: input.anonTag,
         display_name: input.displayName,
+        parent_post_id: null,
+        reply_to_post_id: null,
         message: input.message,
         created_at: now,
         edited_at: null,
@@ -135,7 +139,23 @@ function createMemoryStore(): BoardServerStore {
     },
     async createReply(input) {
       const thread = threads.find((t) => t.id === input.threadId);
-      if (!thread) return null;
+      if (!thread) return { status: 'thread_not_found' };
+      let effectiveParentId: string | null = null;
+      let effectiveReplyToId: string | null = null;
+      if (input.parentPostId) {
+        const target = posts.find(
+          (p) => p.id === input.parentPostId && p.thread_id === input.threadId
+        );
+        if (!target) return { status: 'parent_not_found' };
+        if (target.post_number === 1) return { status: 'cannot_reply_to_op' };
+        if (target.deleted_at) return { status: 'parent_deleted' };
+        effectiveParentId = target.parent_post_id ?? target.id;
+        effectiveReplyToId = input.replyToPostId ?? target.id;
+        const replyTarget = posts.find(
+          (p) => p.id === effectiveReplyToId && p.thread_id === input.threadId && !p.deleted_at
+        );
+        if (!replyTarget) return { status: 'parent_not_found' };
+      }
       const now = nextIso();
       const nextNum =
         posts
@@ -148,6 +168,8 @@ function createMemoryStore(): BoardServerStore {
         author_user_id: input.userId,
         anon_tag: input.anonTag,
         display_name: input.displayName,
+        parent_post_id: effectiveParentId,
+        reply_to_post_id: effectiveReplyToId,
         message: input.message,
         created_at: now,
         edited_at: null,
@@ -156,7 +178,7 @@ function createMemoryStore(): BoardServerStore {
       posts.push(post);
       thread.reply_count = nextNum;
       thread.bumped_at = now;
-      return post;
+      return { status: 'ok', post };
     },
     async editPost(input) {
       const post = posts.find((p) => p.id === input.postId);
@@ -391,6 +413,57 @@ test('threads, replies, anonymity, edit history, reply deletion, and dedicated t
   assert.equal(replyJson.post.post_number, 3);
   assert.equal(replyJson.post.display_name, null);
   assert.notEqual(replyJson.post.anon_tag, t1Json.post.anon_tag);
+
+  // Attempting nested reply to #1 OP returns 400
+  const nestedOpReply = await handleCreateReply(
+    makeReq(`http://localhost/api/threads/${t1Json.thread.id}/posts`, {
+      method: 'POST',
+      cookie: bobCookie,
+      body: JSON.stringify({
+        message: 'Trying to nest on OP',
+        parentPostId: t1Json.post.id,
+      }),
+    }),
+    t1Json.thread.id,
+    deps
+  );
+  assert.equal(nestedOpReply.status, 400);
+
+  // Alice replies specifically to Bob's top-level comment (post #2)
+  const nestedToCommentRes = await handleCreateReply(
+    makeReq(`http://localhost/api/threads/${t1Json.thread.id}/posts`, {
+      method: 'POST',
+      cookie: aliceCookie,
+      body: JSON.stringify({
+        message: 'Wait where on 4th Ave?',
+        parentPostId: namedReplyJson.post.id,
+      }),
+    }),
+    t1Json.thread.id,
+    deps
+  );
+  assert.equal(nestedToCommentRes.status, 201);
+  const nestedToCommentJson = await nestedToCommentRes.json();
+  assert.equal(nestedToCommentJson.post.parent_post_id, namedReplyJson.post.id);
+  assert.equal(nestedToCommentJson.post.reply_to_post_id, namedReplyJson.post.id);
+
+  // Bob replies to Alice's nested reply -> normalizes parent_post_id to comment #2 and keeps reply_to_post_id
+  const nestedToReplyRes = await handleCreateReply(
+    makeReq(`http://localhost/api/threads/${t1Json.thread.id}/posts`, {
+      method: 'POST',
+      cookie: bobCookie,
+      body: JSON.stringify({
+        message: '@Alice Near 2nd St!',
+        parentPostId: nestedToCommentJson.post.id,
+      }),
+    }),
+    t1Json.thread.id,
+    deps
+  );
+  assert.equal(nestedToReplyRes.status, 201);
+  const nestedToReplyJson = await nestedToReplyRes.json();
+  assert.equal(nestedToReplyJson.post.parent_post_id, namedReplyJson.post.id);
+  assert.equal(nestedToReplyJson.post.reply_to_post_id, nestedToCommentJson.post.id);
 
   // Omitting anonymous on thread defaults to named (display_name = Alice)
   const namedThreadRes = await handleCreateThread(

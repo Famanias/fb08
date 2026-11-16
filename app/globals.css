@@ -1556,3 +1556,107 @@ h1 {
   overflow-wrap: anywhere;
   color: #464c56;
 }
+
+.composer-tools {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.composer-tools .tool-left {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+.comment-group + .comment-group {
+  border-top: 1px solid #e4e8f0;
+}
+
+.comment-group > .post {
+  border-bottom: 0;
+}
+
+.reply-thread {
+  margin: 0 0 10px 44px;
+  padding: 4px 0 4px 10px;
+  border-left: 2px solid #c5d1e5;
+  background: #f7f8fb;
+}
+
+.post.post-reply {
+  background: #edeff4;
+  border: 1px solid #dde3ee;
+  border-bottom: 1px solid #d5dce9;
+  padding: 8px 9px;
+  margin-bottom: 6px;
+}
+
+.post.post-reply:last-child {
+  margin-bottom: 0;
+}
+
+.post.post-reply .post-avatar {
+  width: 28px;
+  height: 28px;
+  font-size: 10px;
+}
+
+.chat-type-badge {
+  display: inline-block;
+  font-size: 9px;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 1px 5px;
+  border: 1px solid #c2cce0;
+  border-radius: 2px;
+}
+
+.chat-type-badge.chat-type-comment {
+  background: #f2f4f8;
+  color: #3b5998;
+}
+
+.chat-type-badge.chat-type-reply {
+  background: #dce4f3;
+  color: #29447e;
+  border-color: #9db0d8;
+}
+
+.reply-target-chip {
+  font-size: 10px;
+  color: #4e638e;
+  background: #e3e8f4;
+  border: 1px solid #cad4ea;
+  padding: 1px 5px;
+}
+
+.inline-reply-composer {
+  margin: 6px 0 2px;
+  padding: 8px 10px;
+  background: #f2f4f8;
+  border: 1px solid #c4cfe4;
+}
+
+.inline-reply-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: #3b5998;
+  margin-bottom: 6px;
+}
+
+.inline-reply-composer textarea {
+  min-height: 48px;
+}
+
+@media (max-width: 600px) {
+  .reply-thread {
+    margin-left: 16px;
+    padding-left: 8px;
+  }
+}

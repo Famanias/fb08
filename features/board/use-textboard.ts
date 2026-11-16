@@ -27,6 +27,7 @@ export interface UseTextboardResult {
   visibleThreads: BoardThreadSummary[];
   selectedThread: BoardThreadSummary | null;
   selectedThreadId: string | null;
+  threadPosts: BoardPost[];
   visiblePosts: BoardPost[];
   isThreadOwner: boolean;
   searchQuery: string;
@@ -42,7 +43,11 @@ export interface UseTextboardResult {
   logoutAccount: () => Promise<void>;
   selectThread: (threadId: string | null) => void;
   createThread: (title: string, message: string, anonymous?: boolean) => Promise<string | null>;
-  createReply: (message: string, anonymous?: boolean) => Promise<boolean>;
+  createReply: (
+    message: string,
+    anonymous?: boolean,
+    options?: { parentPostId?: string | null; replyToPostId?: string | null }
+  ) => Promise<boolean>;
   editPost: (postId: string, message: string) => Promise<boolean>;
   deleteReply: (postId: string) => Promise<boolean>;
   deleteSelectedThread: () => Promise<boolean>;
@@ -390,14 +395,18 @@ export function useTextboard(
   );
 
   const createReply = useCallback(
-    async (message: string, anonymous: boolean = false): Promise<boolean> => {
+    async (
+      message: string,
+      anonymous: boolean = false,
+      options?: { parentPostId?: string | null; replyToPostId?: string | null }
+    ): Promise<boolean> => {
       const threadId = selectedThreadIdRef.current;
       if (!threadId || submittingRef.current) return false;
       submittingRef.current = true;
       setIsSubmitting(true);
       setErrorMessage(null);
       try {
-        const post = await service.createReply(threadId, message, anonymous);
+        const post = await service.createReply(threadId, message, anonymous, options);
         if (!mountedRef.current) return false;
         const nextOwned = new Set(ownedPostIds);
         nextOwned.add(post.id);
@@ -419,10 +428,11 @@ export function useTextboard(
             MAX_VISIBLE_THREADS
           )
         );
+        const kindLabel = post.parent_post_id ? 'Reply' : 'Comment';
         onNotify?.(
           anonymous
-            ? `Reply #${post.post_number} posted anonymously.`
-            : `Reply #${post.post_number} posted.`
+            ? `${kindLabel} #${post.post_number} posted anonymously.`
+            : `${kindLabel} #${post.post_number} posted.`
         );
         return true;
       } catch (err: unknown) {
@@ -561,6 +571,7 @@ export function useTextboard(
     visibleThreads,
     selectedThread,
     selectedThreadId,
+    threadPosts,
     visiblePosts,
     isThreadOwner,
     searchQuery,

@@ -6,9 +6,12 @@ import {
   MAX_THREAD_TITLE_LENGTH,
   MAX_USERNAME_LENGTH,
   MAX_VISIBLE_THREADS,
+  buildReplyMentionPrefix,
   filterPostsInThread,
   filterThreads,
   formatPostAuthorLabel,
+  getPostChatType,
+  groupThreadPosts,
   mergeThreadList,
   runSingleFlight,
   sortAndMergeThreadPosts,
@@ -277,5 +280,86 @@ test('formatPostAuthorLabel prefers display_name when present and falls back to 
   assert.equal(
     formatPostAuthorLabel({ display_name: null, anon_tag: 'a4f211' }),
     'Anonymous #a4f211'
+  );
+});
+
+test('getPostChatType, buildReplyMentionPrefix, and groupThreadPosts organize 2-level comments and replies', () => {
+  const op: BoardPost = {
+    id: 'p1',
+    thread_id: 't1',
+    post_number: 1,
+    anon_tag: '',
+    display_name: 'Alice',
+    parent_post_id: null,
+    reply_to_post_id: null,
+    message: 'Topic opener',
+    created_at: '2026-11-16T00:00:00.000Z',
+    edited_at: null,
+    deleted_at: null,
+  };
+  const c1: BoardPost = {
+    id: 'p2',
+    thread_id: 't1',
+    post_number: 2,
+    anon_tag: '',
+    display_name: 'Bob',
+    parent_post_id: null,
+    reply_to_post_id: null,
+    message: 'First top-level comment',
+    created_at: '2026-11-16T00:01:00.000Z',
+    edited_at: null,
+    deleted_at: null,
+  };
+  const r1: BoardPost = {
+    id: 'p3',
+    thread_id: 't1',
+    post_number: 3,
+    anon_tag: 'a4f211',
+    display_name: null,
+    parent_post_id: 'p2',
+    reply_to_post_id: 'p2',
+    message: 'Reply to comment',
+    created_at: '2026-11-16T00:02:00.000Z',
+    edited_at: null,
+    deleted_at: null,
+  };
+  const r2: BoardPost = {
+    id: 'p4',
+    thread_id: 't1',
+    post_number: 4,
+    anon_tag: '',
+    display_name: 'Charlie',
+    parent_post_id: 'p2',
+    reply_to_post_id: 'p3',
+    message: '@Anonymous #a4f211 Nested follow-up',
+    created_at: '2026-11-16T00:03:00.000Z',
+    edited_at: null,
+    deleted_at: null,
+  };
+
+  assert.equal(getPostChatType(op), 'op');
+  assert.equal(getPostChatType(c1), 'comment');
+  assert.equal(getPostChatType(r1), 'reply');
+  assert.equal(buildReplyMentionPrefix(c1), '@Bob ');
+  assert.equal(buildReplyMentionPrefix(r1), '@Anonymous #a4f211 ');
+
+  const allGrouped = groupThreadPosts([op, r2, c1, r1], '');
+  assert.equal(allGrouped.op?.id, 'p1');
+  assert.equal(allGrouped.commentCount, 1);
+  assert.equal(allGrouped.replyCount, 2);
+  assert.equal(allGrouped.groups.length, 1);
+  assert.equal(allGrouped.groups[0].comment.id, 'p2');
+  assert.deepEqual(
+    allGrouped.groups[0].replies.map((r) => r.id),
+    ['p3', 'p4']
+  );
+
+  const filtered = groupThreadPosts([op, c1, r1, r2], 'follow-up');
+  assert.equal(filtered.op, null);
+  assert.equal(filtered.groups.length, 1);
+  assert.equal(filtered.groups[0].comment.id, 'p2');
+  assert.deepEqual(
+    filtered.groups[0].replies.map((r) => r.id),
+    ['p4']
   );
 });

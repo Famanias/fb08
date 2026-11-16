@@ -77,6 +77,8 @@ function toPublicPost(
     // Never expose anon_tag on named posts so readers cannot link named and anonymous posts.
     anon_tag: displayName ? '' : post.anon_tag,
     display_name: displayName,
+    parent_post_id: post.parent_post_id ?? null,
+    reply_to_post_id: post.reply_to_post_id ?? null,
     message: post.message,
     created_at: post.created_at,
     edited_at: post.edited_at,
@@ -335,6 +337,28 @@ export async function handleCreateReply(
     return jsonResponse({ error: 'anonymous must be a boolean.' }, 400);
   }
 
+  let parentPostId: string | null = null;
+  if (body.parentPostId !== undefined && body.parentPostId !== null) {
+    if (typeof body.parentPostId !== 'string' || !isValidUuid(body.parentPostId)) {
+      return jsonResponse({ error: 'Invalid parent comment ID.' }, 400);
+    }
+    parentPostId = body.parentPostId;
+  }
+
+  let replyToPostId: string | null = null;
+  if (body.replyToPostId !== undefined && body.replyToPostId !== null) {
+    if (typeof body.replyToPostId !== 'string' || !isValidUuid(body.replyToPostId)) {
+      return jsonResponse({ error: 'Invalid reply target ID.' }, 400);
+    }
+    if (!parentPostId) {
+      return jsonResponse(
+        { error: 'parentPostId is required when replying to a specific post.' },
+        400
+      );
+    }
+    replyToPostId = body.replyToPostId;
+  }
+
   const msgCheck = validateBoardMessage(body.message);
   if (!msgCheck.valid) {
     return jsonResponse({ error: msgCheck.error }, 400);
@@ -346,19 +370,32 @@ export async function handleCreateReply(
     body.anonymous,
     secret
   );
-  const post = await store.createReply({
+  const res = await store.createReply({
     userId: user.id,
     threadId,
     message: msgCheck.value,
     anonTag,
     displayName,
+    parentPostId,
+    replyToPostId,
   });
 
-  if (!post) {
-    return jsonResponse({ error: 'Thread not found or was deleted.' }, 404);
+  if (res.status === 'ok') {
+    return jsonResponse({ post: toPublicPost(res.post, user.id, []) }, 201);
   }
-
-  return jsonResponse({ post: toPublicPost(post, user.id, []) }, 201);
+  if (res.status === 'cannot_reply_to_op') {
+    return jsonResponse(
+      { error: 'Post a top-level comment instead of a nested reply to #1.' },
+      400
+    );
+  }
+  if (res.status === 'parent_deleted') {
+    return jsonResponse({ error: 'Cannot reply to a deleted post.' }, 409);
+  }
+  if (res.status === 'parent_not_found') {
+    return jsonResponse({ error: 'Target comment or reply was not found.' }, 404);
+  }
+  return jsonResponse({ error: 'Thread not found or was deleted.' }, 404);
 }
 
 export async function handleEditPost(

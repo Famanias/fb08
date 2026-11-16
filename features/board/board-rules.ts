@@ -1,7 +1,9 @@
 import {
   BoardConnectionStatus,
   BoardPost,
+  BoardPostChatType,
   BoardPostEdit,
+  BoardPostThreadGroup,
   BoardThreadSummary,
 } from './board.types';
 
@@ -224,19 +226,111 @@ export function filterPostsInThread(posts: BoardPost[], query: string): BoardPos
   if (!term) {
     return posts;
   }
-  return posts.filter(
-    (post) =>
-      post.message.toLowerCase().includes(term) ||
-      (post.display_name ?? '').toLowerCase().includes(term) ||
-      post.anon_tag.toLowerCase().includes(term) ||
-      `#${post.post_number}`.includes(term)
-  );
+  return posts.filter((post) => postMatchesTerm(post, term));
 }
 
 export function formatPostAuthorLabel(
   post: Pick<BoardPost, 'display_name' | 'anon_tag'>
 ): string {
   return post.display_name ? post.display_name : `Anonymous #${post.anon_tag}`;
+}
+
+export function getPostChatType(
+  post: Pick<BoardPost, 'post_number' | 'parent_post_id'>
+): BoardPostChatType {
+  if (post.post_number === 1) return 'op';
+  return post.parent_post_id ? 'reply' : 'comment';
+}
+
+export function buildReplyMentionPrefix(
+  targetPost: Pick<BoardPost, 'display_name' | 'anon_tag'>
+): string {
+  return `@${formatPostAuthorLabel(targetPost)} `;
+}
+
+function postMatchesTerm(post: BoardPost, term: string): boolean {
+  if (!term) return true;
+  return (
+    post.message.toLowerCase().includes(term) ||
+    (post.display_name ?? '').toLowerCase().includes(term) ||
+    post.anon_tag.toLowerCase().includes(term) ||
+    `#${post.post_number}`.includes(term)
+  );
+}
+
+export function groupThreadPosts(
+  posts: BoardPost[],
+  query: string
+): {
+  op: BoardPost | null;
+  groups: BoardPostThreadGroup[];
+  orphanReplies: BoardPost[];
+  commentCount: number;
+  replyCount: number;
+} {
+  const ordered = [...posts].sort((a, b) =>
+    a.post_number !== b.post_number
+      ? a.post_number - b.post_number
+      : a.id.localeCompare(b.id)
+  );
+  const term = query.trim().toLowerCase();
+
+  let opPost: BoardPost | null = null;
+  const comments: BoardPost[] = [];
+  const repliesByParent = new Map<string, BoardPost[]>();
+  const commentIds = new Set<string>();
+  let replyCount = 0;
+
+  for (const post of ordered) {
+    if (post.post_number === 1) {
+      opPost = post;
+    } else if (!post.parent_post_id) {
+      comments.push(post);
+      commentIds.add(post.id);
+    } else {
+      replyCount += 1;
+      const list = repliesByParent.get(post.parent_post_id) ?? [];
+      list.push(post);
+      repliesByParent.set(post.parent_post_id, list);
+    }
+  }
+
+  const groups: BoardPostThreadGroup[] = [];
+  for (const comment of comments) {
+    const allReplies = repliesByParent.get(comment.id) ?? [];
+    if (!term) {
+      groups.push({ comment, replies: allReplies });
+      continue;
+    }
+    const commentMatches = postMatchesTerm(comment, term);
+    const matchingReplies = commentMatches
+      ? allReplies
+      : allReplies.filter((r) => postMatchesTerm(r, term));
+    if (commentMatches || matchingReplies.length > 0) {
+      groups.push({ comment, replies: matchingReplies });
+    }
+  }
+
+  const orphanReplies: BoardPost[] = [];
+  for (const [parentId, list] of repliesByParent.entries()) {
+    if (!commentIds.has(parentId)) {
+      for (const r of list) {
+        if (postMatchesTerm(r, term)) {
+          orphanReplies.push(r);
+        }
+      }
+    }
+  }
+
+  const visibleOp = opPost && postMatchesTerm(opPost, term) ? opPost : null;
+
+  return {
+    op: visibleOp,
+    groups,
+    orphanReplies,
+    commentCount: comments.length,
+    replyCount,
+  };
 }
 
 export function getBoardStatusLabel(status: BoardConnectionStatus): string {

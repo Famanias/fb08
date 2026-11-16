@@ -28,12 +28,21 @@ export type BoardPost = {
   post_number: number;
   anon_tag: string;
   display_name?: string | null;
+  parent_post_id?: string | null;
+  reply_to_post_id?: string | null;
   message: string;
   created_at: string;
   edited_at: string | null;
   deleted_at: string | null;
   edits?: BoardPostEdit[];
   is_mine?: boolean;
+};
+
+export type BoardPostChatType = 'op' | 'comment' | 'reply';
+
+export type BoardPostThreadGroup = {
+  comment: BoardPost;
+  replies: BoardPost[];
 };
 
 export type BoardConnectionStatus =

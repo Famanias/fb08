@@ -4,6 +4,7 @@ import { useState } from 'react';
 import {
   MAX_POST_LENGTH,
   formatPostAuthorLabel,
+  getPostChatType,
   validateBoardMessage,
 } from '@/features/board/board-rules';
 import { BoardPost } from '@/features/board/board.types';
@@ -12,12 +13,18 @@ import { getAvatarColors } from '@/lib/initials';
 
 interface BoardPostItemProps {
   post: BoardPost;
+  replyToPost?: BoardPost | null;
+  canReply?: boolean;
+  onStartReply?: (post: BoardPost) => void;
   onEditPost: (postId: string, message: string) => Promise<boolean>;
   onDeleteReply: (postId: string) => Promise<boolean>;
 }
 
 export function BoardPostItem({
   post,
+  replyToPost,
+  canReply = false,
+  onStartReply,
   onEditPost,
   onDeleteReply,
 }: BoardPostItemProps) {
@@ -30,6 +37,7 @@ export function BoardPostItem({
   const [showHistory, setShowHistory] = useState(false);
 
   const isDeleted = Boolean(post.deleted_at);
+  const chatType = getPostChatType(post);
   const authorLabel = formatPostAuthorLabel(post);
   const [bg, fg] = getAvatarColors(post.display_name || post.anon_tag);
   const edits = post.edits ?? [];
@@ -66,9 +74,10 @@ export function BoardPostItem({
 
   return (
     <article
-      className="post"
+      className={`post${chatType === 'reply' ? ' post-reply' : ''}`}
       data-post-id={post.id}
       data-post-number={post.post_number}
+      data-chat-type={chatType}
     >
       <div
         className="post-avatar"
@@ -82,9 +91,19 @@ export function BoardPostItem({
         <div className="post-line">
           <span className="post-num">
             #{post.post_number}
-            {post.post_number === 1 ? ' (OP)' : ''}
+            {chatType === 'op' ? ' (OP)' : ''}
           </span>
+          {chatType !== 'op' ? (
+            <span className={`chat-type-badge chat-type-${chatType}`}>
+              {chatType === 'comment' ? 'Comment' : 'Reply'}
+            </span>
+          ) : null}
           <span className="post-author">{authorLabel}</span>
+          {chatType === 'reply' && replyToPost ? (
+            <span className="reply-target-chip">
+              to #{replyToPost.post_number} · {formatPostAuthorLabel(replyToPost)}
+            </span>
+          ) : null}
           {post.is_mine ? <span className="mine-badge">You</span> : null}
           {post.edited_at && !isDeleted ? (
             <span className="post-pinned" title={formatFullTimestamp(post.edited_at)}>
@@ -148,6 +167,19 @@ export function BoardPostItem({
             {formatWallTimestamp(post.created_at)}
           </span>
 
+          {canReply && !isDeleted && post.post_number > 1 && onStartReply ? (
+            <>
+              <span className="dot">·</span>
+              <button
+                type="button"
+                data-reply-post={post.id}
+                onClick={() => onStartReply(post)}
+              >
+                Reply
+              </button>
+            </>
+          ) : null}
+
           {post.is_mine && !isDeleted && !isEditing ? (
             <>
               <span className="dot">·</span>
@@ -170,7 +202,7 @@ export function BoardPostItem({
               <span className="dot">·</span>
               {confirmDelete ? (
                 <span className="inline-confirm">
-                  <span>Delete reply?</span>
+                  <span>{chatType === 'comment' ? 'Delete comment?' : 'Delete reply?'}</span>
                   <button
                     type="button"
                     className="btn-danger"

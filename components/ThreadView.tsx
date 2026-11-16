@@ -1,10 +1,13 @@
 'use client';
 
-import { FormEvent, KeyboardEvent, useState } from 'react';
+import { FormEvent, KeyboardEvent, useMemo, useState } from 'react';
 import { Lock } from 'lucide-react';
 import {
   MAX_POST_LENGTH,
+  buildReplyMentionPrefix,
+  formatPostAuthorLabel,
   getBoardStatusLabel,
+  groupThreadPosts,
   validateBoardMessage,
 } from '@/features/board/board-rules';
 import {
@@ -27,7 +30,11 @@ interface ThreadViewProps {
   isSubmitting: boolean;
   errorMessage: string | null;
   onBack: () => void;
-  onCreateReply: (message: string, anonymous: boolean) => Promise<boolean>;
+  onCreateReply: (
+    message: string,
+    anonymous: boolean,
+    options?: { parentPostId?: string | null; replyToPostId?: string | null }
+  ) => Promise<boolean>;
   onEditPost: (postId: string, message: string) => Promise<boolean>;
   onDeleteReply: (postId: string) => Promise<boolean>;
   onDeleteThread: () => Promise<boolean>;
@@ -56,13 +63,26 @@ export function ThreadView({
 }: ThreadViewProps) {
   const [replyText, setReplyText] = useState('');
   const [isAnonymous, setIsAnonymous] = useState(false);
+  const [replyTarget, setReplyTarget] = useState<BoardPost | null>(null);
+  const [inlineReplyText, setInlineReplyText] = useState('');
+  const [inlineAnonymous, setInlineAnonymous] = useState(false);
   const [confirmThreadDelete, setConfirmThreadDelete] = useState(false);
   const [isDeletingThread, setIsDeletingThread] = useState(false);
 
+  const postsById = useMemo(() => new Map(posts.map((p) => [p.id, p])), [posts]);
+  const grouped = useMemo(
+    () => groupThreadPosts(posts, searchQuery),
+    [posts, searchQuery]
+  );
+  const hasVisibleItems =
+    Boolean(grouped.op) || grouped.groups.length > 0 || grouped.orphanReplies.length > 0;
+
   const msgCheck = validateBoardMessage(replyText);
   const remaining = MAX_POST_LENGTH - replyText.length;
+  const inlineCheck = validateBoardMessage(inlineReplyText);
+  const inlineRemaining = MAX_POST_LENGTH - inlineReplyText.length;
 
-  async function submitReply() {
+  async function submitComment() {
     if (!msgCheck.valid || isSubmitting) return;
     const ok = await onCreateReply(msgCheck.value, isAnonymous);
     if (ok) {
@@ -73,13 +93,45 @@ export function ThreadView({
 
   function handleFormSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    void submitReply();
+    void submitComment();
   }
 
   function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
       e.preventDefault();
-      void submitReply();
+      void submitComment();
+    }
+  }
+
+  function handleStartReply(target: BoardPost) {
+    setReplyTarget(target);
+    setInlineAnonymous(false);
+    setInlineReplyText(target.parent_post_id ? buildReplyMentionPrefix(target) : '');
+    if (errorMessage) onClearError();
+  }
+
+  async function submitInlineReply() {
+    if (!replyTarget || !inlineCheck.valid || isSubmitting) return;
+    const ok = await onCreateReply(inlineCheck.value, inlineAnonymous, {
+      parentPostId: replyTarget.parent_post_id ?? replyTarget.id,
+      replyToPostId: replyTarget.id,
+    });
+    if (ok) {
+      setReplyTarget(null);
+      setInlineReplyText('');
+      setInlineAnonymous(false);
+    }
+  }
+
+  function handleInlineSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    void submitInlineReply();
+  }
+
+  function handleInlineKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      void submitInlineReply();
     }
   }
 
@@ -114,8 +166,10 @@ export function ThreadView({
                 }`}
                 aria-hidden="true"
               />
-              {getBoardStatusLabel(connectionStatus)} · {thread?.reply_count ?? posts.length}{' '}
-              {(thread?.reply_count ?? posts.length) === 1 ? 'post' : 'posts'} · Per-thread IDs active
+              {getBoardStatusLabel(connectionStatus)} · {grouped.commentCount}{' '}
+              {grouped.commentCount === 1 ? 'comment' : 'comments'} · {grouped.replyCount}{' '}
+              {grouped.replyCount === 1 ? 'reply' : 'replies'} · {thread?.reply_count ?? posts.length}{' '}
+              {(thread?.reply_count ?? posts.length) === 1 ? 'post' : 'posts'}
             </span>
           </div>
         </div>
@@ -177,7 +231,7 @@ export function ThreadView({
             <strong>Loading thread...</strong>
             Fetching posts and edit history.
           </div>
-        ) : posts.length === 0 ? (
+        ) : !hasVisibleItems ? (
           <div className="empty">
             <strong>{searchQuery.trim() ? 'No matching posts' : 'No posts found'}</strong>
             {searchQuery.trim()
@@ -185,14 +239,147 @@ export function ThreadView({
               : 'This thread may have been deleted.'}
           </div>
         ) : (
-          posts.map((post) => (
-            <BoardPostItem
-              key={post.id}
-              post={post}
-              onEditPost={onEditPost}
-              onDeleteReply={onDeleteReply}
-            />
-          ))
+          <>
+            {grouped.op ? (
+              <BoardPostItem
+                key={grouped.op.id}
+                post={grouped.op}
+                onEditPost={onEditPost}
+                onDeleteReply={onDeleteReply}
+              />
+            ) : null}
+
+            {grouped.groups.map(({ comment, replies }) => {
+              const isInlineOpen =
+                Boolean(user) &&
+                Boolean(replyTarget) &&
+                (replyTarget!.parent_post_id ?? replyTarget!.id) === comment.id;
+
+              return (
+                <div key={comment.id} className="comment-group" data-comment-id={comment.id}>
+                  <BoardPostItem
+                    post={comment}
+                    canReply={Boolean(user)}
+                    onStartReply={handleStartReply}
+                    onEditPost={onEditPost}
+                    onDeleteReply={onDeleteReply}
+                  />
+
+                  {replies.length > 0 || isInlineOpen ? (
+                    <div className="reply-thread">
+                      {replies.map((reply) => (
+                        <BoardPostItem
+                          key={reply.id}
+                          post={reply}
+                          replyToPost={
+                            reply.reply_to_post_id
+                              ? (postsById.get(reply.reply_to_post_id) ?? null)
+                              : null
+                          }
+                          canReply={Boolean(user)}
+                          onStartReply={handleStartReply}
+                          onEditPost={onEditPost}
+                          onDeleteReply={onDeleteReply}
+                        />
+                      ))}
+
+                      {isInlineOpen && replyTarget ? (
+                        <form
+                          className="composer inline-reply-composer"
+                          data-inline-reply-parent={comment.id}
+                          onSubmit={handleInlineSubmit}
+                        >
+                          <div className="inline-reply-header">
+                            <span>
+                              Replying to <strong>#{replyTarget.post_number}</strong> (
+                              {formatPostAuthorLabel(replyTarget)})
+                            </span>
+                            <button
+                              type="button"
+                              className="small-btn"
+                              disabled={isSubmitting}
+                              onClick={() => setReplyTarget(null)}
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                          <textarea
+                            id="inline-reply-message"
+                            rows={2}
+                            maxLength={MAX_POST_LENGTH}
+                            autoFocus
+                            placeholder={
+                              inlineAnonymous
+                                ? `Write an anonymous reply to #${replyTarget.post_number}...`
+                                : `Reply to #${replyTarget.post_number} as ${user!.username}...`
+                            }
+                            value={inlineReplyText}
+                            onChange={(e) => {
+                              setInlineReplyText(e.target.value);
+                              if (errorMessage) onClearError();
+                            }}
+                            onKeyDown={handleInlineKeyDown}
+                          />
+                          <div className="composer-tools">
+                            <div className="tool-left">
+                              <label
+                                className="anon-toggle-label"
+                                htmlFor="inline-reply-anonymous-toggle"
+                              >
+                                <input
+                                  id="inline-reply-anonymous-toggle"
+                                  type="checkbox"
+                                  checked={inlineAnonymous}
+                                  disabled={isSubmitting}
+                                  onChange={(e) => setInlineAnonymous(e.target.checked)}
+                                />
+                                <span>Post anonymously</span>
+                              </label>
+                            </div>
+                            <div className="tool-right">
+                              <span
+                                className={`counter${inlineRemaining <= 40 ? ' low' : ''}`}
+                              >
+                                {inlineRemaining} left
+                              </span>
+                              <button
+                                type="submit"
+                                id="inline-reply-submit"
+                                className="btn-share"
+                                disabled={!inlineCheck.valid || isSubmitting}
+                              >
+                                {isSubmitting
+                                  ? 'Replying...'
+                                  : inlineAnonymous
+                                    ? 'Reply Anonymously'
+                                    : 'Post Reply'}
+                              </button>
+                            </div>
+                          </div>
+                        </form>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
+
+            {grouped.orphanReplies.map((reply) => (
+              <BoardPostItem
+                key={reply.id}
+                post={reply}
+                replyToPost={
+                  reply.reply_to_post_id
+                    ? (postsById.get(reply.reply_to_post_id) ?? null)
+                    : null
+                }
+                canReply={Boolean(user)}
+                onStartReply={handleStartReply}
+                onEditPost={onEditPost}
+                onDeleteReply={onDeleteReply}
+              />
+            ))}
+          </>
         )}
       </div>
 
@@ -205,8 +392,8 @@ export function ThreadView({
               maxLength={MAX_POST_LENGTH}
               placeholder={
                 isAnonymous
-                  ? 'Write an anonymous reply in this thread...'
-                  : `Reply as ${user.username}...`
+                  ? 'Write an anonymous comment in this thread...'
+                  : `Add a comment as ${user.username}...`
               }
               value={replyText}
               onChange={(e) => {
@@ -230,8 +417,8 @@ export function ThreadView({
                 <span className="anon-toggle-hint">
                   <Lock className="svg-icon" strokeWidth={2.2} style={{ marginRight: 4 }} />
                   {isAnonymous
-                    ? 'Same anonymous thread ID for your anon replies here'
-                    : `Posting as ${user.username}`}
+                    ? 'Same anonymous thread ID for your anon posts here'
+                    : `Commenting as ${user.username}`}
                 </span>
               </div>
               <div className="tool-right">
@@ -247,8 +434,8 @@ export function ThreadView({
                   {isSubmitting
                     ? 'Posting...'
                     : isAnonymous
-                      ? 'Post Anonymously'
-                      : 'Post Reply'}
+                      ? 'Comment Anonymously'
+                      : 'Post Comment'}
                 </button>
               </div>
             </div>
@@ -256,7 +443,7 @@ export function ThreadView({
         ) : (
           <div className="gate-banner" id="guest-reply-banner">
             <Lock className="svg-icon" style={{ marginRight: 5 }} />
-            Sign in or register in the Account box to reply in this thread.
+            Sign in or register in the Account box to comment or reply in this thread.
           </div>
         )}
       </div>

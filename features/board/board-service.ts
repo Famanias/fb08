@@ -40,7 +40,8 @@ export interface BoardService {
   createReply(
     threadId: string,
     message: string,
-    anonymous?: boolean
+    anonymous?: boolean,
+    options?: { parentPostId?: string | null; replyToPostId?: string | null }
   ): Promise<BoardPost>;
   editPost(
     postId: string,
@@ -247,13 +248,19 @@ export class SupabaseBoardService implements BoardService {
   async createReply(
     threadId: string,
     message: string,
-    anonymous: boolean = false
+    anonymous: boolean = false,
+    options?: { parentPostId?: string | null; replyToPostId?: string | null }
   ): Promise<BoardPost> {
     const data = await this.requestJson<{ post: BoardPost }>(
       `/api/threads/${encodeURIComponent(threadId)}/posts`,
       {
         method: 'POST',
-        body: JSON.stringify({ message, anonymous }),
+        body: JSON.stringify({
+          message,
+          anonymous,
+          ...(options?.parentPostId ? { parentPostId: options.parentPostId } : {}),
+          ...(options?.replyToPostId ? { replyToPostId: options.replyToPostId } : {}),
+        }),
       }
     );
     return data.post;

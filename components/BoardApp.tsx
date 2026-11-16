@@ -44,7 +44,7 @@ export function BoardApp() {
     visibleThreads,
     selectedThread,
     selectedThreadId,
-    visiblePosts,
+    threadPosts,
     isThreadOwner,
     searchQuery,
     setSearchQuery,
@@ -119,10 +119,11 @@ export function BoardApp() {
 
             {selectedThreadId ? (
               <ThreadView
+                key={selectedThreadId}
                 user={user}
                 thread={selectedThread}
                 threadId={selectedThreadId}
-                posts={visiblePosts}
+                posts={threadPosts}
                 isThreadOwner={isThreadOwner}
                 searchQuery={searchQuery}
                 connectionStatus={connectionStatus}
