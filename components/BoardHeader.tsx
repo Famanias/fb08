@@ -1,12 +1,13 @@
 'use client';
 
 import { Search } from 'lucide-react';
+import Link from 'next/link';
 import { BoardUser } from '@/features/board/board.types';
 
 interface BoardHeaderProps {
   user: BoardUser | null;
   searchQuery: string;
-  activeView: 'board' | 'people' | 'profile';
+  activeView: 'board' | 'people' | 'profile' | 'marketplace';
   activeProfileUsername: string | null;
   onSearchChange: (value: string) => void;
   onShowBoard: () => void;
@@ -56,6 +57,9 @@ export function BoardHeader({
           >
             People
           </button>
+          <Link href="/marketplace" className={`top-link${activeView === 'marketplace' ? ' active' : ''}`} aria-current={activeView === 'marketplace' ? 'page' : undefined}>
+            Marketplace
+          </Link>
           {user ? (
             <button
               type="button"
@@ -74,9 +78,9 @@ export function BoardHeader({
         </nav>
         <div className="top-spacer" />
         <span className="signed" id="top-greeting">
-          {user ? `Signed in as ${user.username}` : 'Visitor (read-only)'}
+          {user ? `Signed in as ${user.username}` : activeView === 'marketplace' ? 'Visitor (Marketplace guest)' : 'Visitor (read-only)'}
         </span>
-        <label className="top-search" aria-label="Search threads, posts, and people">
+        {activeView !== 'marketplace' && <label className="top-search" aria-label="Search threads, posts, and people">
           <input
             id="search"
             type="search"
@@ -88,7 +92,7 @@ export function BoardHeader({
           <span className="search-icon" aria-hidden="true">
             <Search className="svg-icon" strokeWidth={2.3} />
           </span>
-        </label>
+        </label>}
       </div>
     </header>
   );

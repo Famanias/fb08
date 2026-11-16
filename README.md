@@ -42,3 +42,7 @@ npm run lint
 npm run build
 npm run dev
 ```
+
+## Marketplace
+
+The integrated Marketplace is available at `/marketplace`. See [Marketplace implementation and operations](docs/MARKETPLACE_IMPLEMENTATION.md) for schema, privacy, upload limits, verification, deployment and rollback instructions.
