@@ -30,6 +30,7 @@ interface ThreadViewProps {
   isSubmitting: boolean;
   errorMessage: string | null;
   onBack: () => void;
+  onOpenProfile?: (username: string) => void;
   onCreateReply: (
     message: string,
     anonymous: boolean,
@@ -54,6 +55,7 @@ export function ThreadView({
   isSubmitting,
   errorMessage,
   onBack,
+  onOpenProfile,
   onCreateReply,
   onEditPost,
   onDeleteReply,
@@ -249,6 +251,7 @@ export function ThreadView({
               <BoardPostItem
                 key={grouped.op.id}
                 post={grouped.op}
+                onOpenProfile={onOpenProfile}
                 onEditPost={onEditPost}
                 onDeleteReply={onDeleteReply}
               />
@@ -271,6 +274,7 @@ export function ThreadView({
                     post={comment}
                     canReply={Boolean(user)}
                     onStartReply={handleStartReply}
+                    onOpenProfile={onOpenProfile}
                     onEditPost={onEditPost}
                     onDeleteReply={onDeleteReply}
                   />
@@ -311,6 +315,7 @@ export function ThreadView({
                               }
                               canReply={Boolean(user)}
                               onStartReply={handleStartReply}
+                              onOpenProfile={onOpenProfile}
                               onEditPost={onEditPost}
                               onDeleteReply={onDeleteReply}
                             />
@@ -410,6 +415,7 @@ export function ThreadView({
                 }
                 canReply={Boolean(user)}
                 onStartReply={handleStartReply}
+                onOpenProfile={onOpenProfile}
                 onEditPost={onEditPost}
                 onDeleteReply={onDeleteReply}
               />

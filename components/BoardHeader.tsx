@@ -6,17 +6,23 @@ import { BoardUser } from '@/features/board/board.types';
 interface BoardHeaderProps {
   user: BoardUser | null;
   searchQuery: string;
-  selectedThreadId: string | null;
+  activeView: 'board' | 'people' | 'profile';
+  activeProfileUsername: string | null;
   onSearchChange: (value: string) => void;
-  onShowIndex: () => void;
+  onShowBoard: () => void;
+  onShowPeople: () => void;
+  onOpenProfile: (username: string) => void;
 }
 
 export function BoardHeader({
   user,
   searchQuery,
-  selectedThreadId,
+  activeView,
+  activeProfileUsername,
   onSearchChange,
-  onShowIndex,
+  onShowBoard,
+  onShowPeople,
+  onOpenProfile,
 }: BoardHeaderProps) {
   return (
     <header className="topbar">
@@ -24,33 +30,57 @@ export function BoardHeader({
         <a
           href="#top"
           className="brand"
-          aria-label="FB 08 Textboard Home"
+          aria-label="FB 08 Home"
           onClick={(e) => {
             e.preventDefault();
-            onShowIndex();
+            onShowBoard();
           }}
         >
           fb<em>/08</em>
-          <span className="brand-sub">textboard</span>
+          <span className="brand-sub">social</span>
         </a>
         <nav className="top-links" aria-label="Primary">
           <button
             type="button"
-            className={`top-link${selectedThreadId === null ? ' active' : ''}`}
-            onClick={onShowIndex}
+            id="nav-board"
+            className={`top-link${activeView === 'board' ? ' active' : ''}`}
+            onClick={onShowBoard}
           >
-            All Threads
+            Board
           </button>
+          <button
+            type="button"
+            id="nav-people"
+            className={`top-link${activeView === 'people' ? ' active' : ''}`}
+            onClick={onShowPeople}
+          >
+            People
+          </button>
+          {user ? (
+            <button
+              type="button"
+              id="nav-my-profile"
+              className={`top-link${
+                activeView === 'profile' &&
+                activeProfileUsername?.toLowerCase() === user.username.toLowerCase()
+                  ? ' active'
+                  : ''
+              }`}
+              onClick={() => onOpenProfile(user.username)}
+            >
+              My Profile
+            </button>
+          ) : null}
         </nav>
         <div className="top-spacer" />
         <span className="signed" id="top-greeting">
           {user ? `Signed in as ${user.username}` : 'Visitor (read-only)'}
         </span>
-        <label className="top-search" aria-label="Search threads and posts">
+        <label className="top-search" aria-label="Search threads, posts, and people">
           <input
             id="search"
             type="search"
-            placeholder="Search threads & posts"
+            placeholder="Search board & people"
             autoComplete="off"
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}

@@ -16,6 +16,7 @@ interface BoardPostItemProps {
   replyToPost?: BoardPost | null;
   canReply?: boolean;
   onStartReply?: (post: BoardPost) => void;
+  onOpenProfile?: (username: string) => void;
   onEditPost: (postId: string, message: string) => Promise<boolean>;
   onDeleteReply: (postId: string) => Promise<boolean>;
 }
@@ -25,6 +26,7 @@ export function BoardPostItem({
   replyToPost,
   canReply = false,
   onStartReply,
+  onOpenProfile,
   onEditPost,
   onDeleteReply,
 }: BoardPostItemProps) {
@@ -98,7 +100,17 @@ export function BoardPostItem({
               {chatType === 'comment' ? 'Comment' : 'Reply'}
             </span>
           ) : null}
-          <span className="post-author">{authorLabel}</span>
+          {post.display_name && onOpenProfile ? (
+            <button
+              type="button"
+              className="post-author author-profile-link"
+              onClick={() => onOpenProfile(post.display_name!)}
+            >
+              {authorLabel}
+            </button>
+          ) : (
+            <span className="post-author">{authorLabel}</span>
+          )}
           {chatType === 'reply' && replyToPost ? (
             <span className="reply-target-chip">
               to #{replyToPost.post_number} · {formatPostAuthorLabel(replyToPost)}

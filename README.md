@@ -11,6 +11,7 @@ A 2008-Facebook-styled community textboard built with Next.js 15 App Router, Sup
 - **Optional per-post anonymity:** Posts default to showing your account username (`Post anonymously` unchecked). Checking **Post anonymously** on any thread or reply publishes it as `Anonymous #<tag>` scoped deterministically to `(user, thread)`, without linking it to your named posts or other threads.
 - **Own-post editing with public edit history:** Authors can edit their own posts (`#1+`), automatically recording previous versions in public expandable edit histories.
 - **Separated reply vs. thread deletion:** Authors can soft-delete their own replies (`#2+`, preserving reply numbering as `[deleted by author]` while clearing edit history) and thread creators have a dedicated **Delete Thread** button with confirmation.
+- **User Profiles, Follow -> Auto-Friends & Visibility:** Visit any member's profile (`?profile=<username>`), upload a profile picture (`<= 25 MB` image), follow one-way (mutual follows automatically become **Friends ✓**), and publish profile posts set to **Public**, **Friends only**, or **Only me** with image/video uploads up to **25 MB**, nested collapsible comments & replies, and **Public**-only post sharing.
 - **Live updates:** Supabase Realtime synchronizes new threads, replies, edits, and thread deletions across connected browsers.
 
 ## Environment Variables
@@ -29,7 +30,7 @@ AUTH_SESSION_SECRET=at_least_16_random_characters
 
 ## Database Migration
 
-Apply [20261116084500_create_textboard_schema.sql](supabase/migrations/20261116084500_create_textboard_schema.sql), [20261116104500_add_post_display_name.sql](supabase/migrations/20261116104500_add_post_display_name.sql), and [20261116112000_add_comment_replies.sql](supabase/migrations/20261116112000_add_comment_replies.sql) to provision `board_users`, `board_threads`, `board_posts` (including `display_name`, `parent_post_id`, `reply_to_post_id`), `board_post_edits`, column-restricted RLS policies, atomic RPCs (`create_board_thread`, `create_board_reply`, `edit_board_post`), and `supabase_realtime` publication entries.
+Apply [20261116084500_create_textboard_schema.sql](supabase/migrations/20261116084500_create_textboard_schema.sql), [20261116104500_add_post_display_name.sql](supabase/migrations/20261116104500_add_post_display_name.sql), [20261116112000_add_comment_replies.sql](supabase/migrations/20261116112000_add_comment_replies.sql), and [20261116120000_create_profiles_and_media.sql](supabase/migrations/20261116120000_create_profiles_and_media.sql) to provision `board_users` (with `avatar_path`), `board_threads`, `board_posts`, `board_post_edits`, `user_follows`, `profile_posts`, `profile_post_comments`, the private `board-media` Storage bucket (`25 MB` limit), column-restricted RLS policies, atomic RPCs, and `supabase_realtime` entries.
 
 ## Local Development & Verification
 

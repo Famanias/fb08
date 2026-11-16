@@ -8,6 +8,7 @@ import {
   validateUsername,
 } from '@/features/board/board-rules';
 import { BoardThreadSummary, BoardUser } from '@/features/board/board.types';
+import { ProfileDirectoryEntry } from '@/features/profile/profile.types';
 
 interface AccountSidebarProps {
   user: BoardUser | null;
@@ -16,11 +17,14 @@ interface AccountSidebarProps {
   authError: string | null;
   threads: BoardThreadSummary[];
   selectedThreadId: string | null;
+  directory: ProfileDirectoryEntry[];
+  activeProfileUsername: string | null;
   onClearAuthError: () => void;
   onLogin: (username: string, password: string) => Promise<boolean>;
   onRegister: (username: string, password: string) => Promise<boolean>;
   onLogout: () => Promise<void>;
   onSelectThread: (threadId: string) => void;
+  onOpenProfile: (username: string) => void;
 }
 
 export function AccountSidebar({
@@ -30,11 +34,14 @@ export function AccountSidebar({
   authError,
   threads,
   selectedThreadId,
+  directory,
+  activeProfileUsername,
   onClearAuthError,
   onLogin,
   onRegister,
   onLogout,
   onSelectThread,
+  onOpenProfile,
 }: AccountSidebarProps) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -98,7 +105,15 @@ export function AccountSidebar({
               <p className="auth-note">
                 Posts show your username by default. Check &ldquo;Post anonymously&rdquo; on any post to hide it behind a per-thread ID.
               </p>
-              <div style={{ marginTop: 9 }}>
+              <div className="auth-actions" style={{ marginTop: 9 }}>
+                <button
+                  type="button"
+                  id="sidebar-my-profile"
+                  className="btn-share"
+                  onClick={() => onOpenProfile(user.username)}
+                >
+                  My Profile
+                </button>
                 <button
                   type="button"
                   id="auth-logout"
@@ -200,6 +215,45 @@ export function AccountSidebar({
                   >
                     <span className="sidebar-thread-title">{thread.title}</span>
                     <span className="sidebar-thread-count">({thread.reply_count})</span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+
+      <div className="board-box">
+        <div className="board-box-head">
+          <span>People</span>
+          <span>{directory.length}</span>
+        </div>
+        {directory.length === 0 ? (
+          <div className="board-box-body">
+            <span style={{ color: '#8692a3' }}>No profiles yet.</span>
+          </div>
+        ) : (
+          <ul className="sidebar-thread-list">
+            {directory.slice(0, 10).map((member) => {
+              const isActive =
+                activeProfileUsername?.toLowerCase() === member.username.toLowerCase();
+              return (
+                <li key={member.id} className="sidebar-thread-item">
+                  <button
+                    type="button"
+                    className={`sidebar-thread-btn${isActive ? ' active' : ''}`}
+                    onClick={() => onOpenProfile(member.username)}
+                  >
+                    <span className="sidebar-thread-title">{member.username}</span>
+                    <span className="sidebar-thread-count">
+                      {member.relationship.isFriend
+                        ? 'Friend ✓'
+                        : member.relationship.isFollowing
+                          ? 'Following'
+                          : member.relationship.followsViewer
+                            ? 'Follows you'
+                            : 'Profile'}
+                    </span>
                   </button>
                 </li>
               );

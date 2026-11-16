@@ -26,6 +26,7 @@ interface ThreadIndexProps {
   isSubmitting: boolean;
   errorMessage: string | null;
   onSelectThread: (threadId: string) => void;
+  onOpenProfile?: (username: string) => void;
   onCreateThread: (
     title: string,
     message: string,
@@ -45,6 +46,7 @@ export function ThreadIndex({
   isSubmitting,
   errorMessage,
   onSelectThread,
+  onOpenProfile,
   onCreateThread,
   onRetry,
   onClearError,
@@ -234,7 +236,20 @@ export function ThreadIndex({
               ) : null}
               <div className="thread-meta">
                 {thread.op_display_name ? (
-                  <span>OP {thread.op_display_name}</span>
+                  <span>
+                    OP{' '}
+                    {onOpenProfile ? (
+                      <button
+                        type="button"
+                        className="author-profile-link"
+                        onClick={() => onOpenProfile(thread.op_display_name!)}
+                      >
+                        {thread.op_display_name}
+                      </button>
+                    ) : (
+                      thread.op_display_name
+                    )}
+                  </span>
                 ) : thread.op_anon_tag ? (
                   <span>OP Anonymous #{thread.op_anon_tag}</span>
                 ) : null}
