@@ -7,11 +7,11 @@ const http = require('node:http');
 const net = require('node:net');
 const { join } = require('node:path');
 const { LocalHarnessError } = require('./local-marketplace-docker.cjs');
+const { ownerHeader, readOwnedResponse } = require('./local-marketplace-http.cjs');
 
 const hostname = '127.0.0.1';
 const port = 55452;
 const origin = `http://${hostname}:${port}`;
-const ownerHeader = 'x-fb08-local-privacy-run';
 
 function assertNoDotenv() {
   // These are exactly the files @next/env can load in production mode.
@@ -151,7 +151,7 @@ async function verify({ token, anonToken, sql }) {
   };
   const env = {
     PATH: process.env.PATH, SystemRoot: process.env.SystemRoot, TEMP: process.env.TEMP, TMP: process.env.TMP,
-    NODE_ENV: 'production', NEXT_TELEMETRY_DISABLED: '1',
+    NODE_ENV: 'production', NEXT_TELEMETRY_DISABLED: '1', NODE_USE_ENV_PROXY: '0',
     NEXT_PUBLIC_SUPABASE_URL: 'http://127.0.0.1:55451', NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: anonToken,
     NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: 'pk_test_LocalMarketplacePrivacyFixture',
     MARKETPLACE_PAYMENTS_ENABLED: 'true', MARKETPLACE_PAYMENT_TENANT: fixture.tenant, MARKETPLACE_APP_ORIGIN: origin,
@@ -178,11 +178,8 @@ async function verify({ token, anonToken, sql }) {
     let responses = 0;
     const canaries = [...Object.values(privateEnv), ...fixture.canaries];
     async function request(path, { cookie, status = 200, type = 'text/html' } = {}) {
-      const options = { redirect: 'error', signal: AbortSignal.timeout(15000), headers: cookie ? { cookie: `fb08_mp_buyer=${cookie}` } : {} };
-      const response = await fetch(origin + path, options);
-      const body = await response.text();
-      if (server.child.exitCode !== null || server.child.signalCode !== null || response.headers.get(ownerHeader) !== run
-        || response.status !== status || !response.headers.get('content-type')?.startsWith(type)) {
+      const body = await readOwnedResponse(port, path, { run, cookie, status, type });
+      if (server.child.exitCode !== null || server.child.signalCode !== null) {
         throw new LocalHarnessError('Unexpected response from the owned privacy server.');
       }
       checkPrivate(body, canaries);
@@ -222,8 +219,8 @@ async function verify({ token, anonToken, sql }) {
   }
 }
 
-// Prevent these Next child processes from opening provider connections, even if a
-// fixture regresses into a provider-backed path. The explicit proxy is their only upstream.
+// This process can open outbound sockets only to the loopback PostgREST proxy.
+// Fresh Node workers launched by Next run without this in-process patch.
 function restrictOutbound() {
   const connect = net.Socket.prototype.connect;
   net.Socket.prototype.connect = function (...args) {

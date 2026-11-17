@@ -2,9 +2,9 @@
 const { spawn } = require('node:child_process');
 const { readFileSync } = require('node:fs');
 const { randomBytes, createHmac } = require('node:crypto');
-const http = require('node:http');
 const { setTimeout: delay } = require('node:timers/promises');
 const { db, rest, dbName, network, label, LocalHarnessError, openLocalDocker, inspectOwnedContainer, inspectOwnedNetwork } = require('./local-marketplace-docker.cjs');
+const { createRestProxy, restReady } = require('./local-marketplace-http.cjs');
 const privacy = require('./verify-marketplace-payment-privacy.cjs');
 
 function sqlFor(docker, containerId) {
@@ -55,20 +55,7 @@ async function main() {
   const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
   const body = Buffer.from(JSON.stringify({ role: 'service_role', exp: Math.floor(Date.now() / 1000) + 3600 })).toString('base64url');
   const token = `${header}.${body}.${createHmac('sha256', secret).update(`${header}.${body}`).digest('base64url')}`;
-  const proxy = http.createServer((req, res) => {
-    if (!req.url?.startsWith('/rest/v1/')) { res.writeHead(404); res.end(); return; }
-    const upstream = http.request({ hostname: '127.0.0.1', port: 55450, path: req.url.slice('/rest/v1'.length), method: req.method, headers: req.headers, signal: AbortSignal.timeout(15000) }, incoming => {
-      incoming.once('error', () => res.destroy());
-      res.writeHead(incoming.statusCode, incoming.headers);
-      incoming.pipe(res);
-    });
-    upstream.once('error', () => {
-      if (res.headersSent) res.destroy();
-      else { res.writeHead(503); res.end(); }
-    });
-    res.once('close', () => upstream.destroy());
-    req.pipe(upstream);
-  });
+  const proxy = createRestProxy();
   await new Promise((resolve, reject) => { proxy.once('error', reject); proxy.listen(55451, '127.0.0.1', resolve); });
   try {
     // Wait for PostgREST initialization; every request remains on the fixed loopback port.
@@ -76,16 +63,14 @@ async function main() {
     let ready = false;
     while (Date.now() < deadline) {
       try {
-        const response = await fetch('http://127.0.0.1:55451/rest/v1/', { redirect: 'error', signal: AbortSignal.timeout(1000) });
-        await response.body?.cancel();
-        if (response.ok) { ready = true; break; }
+        if (await restReady()) { ready = true; break; }
       } catch {}
       await delay(250);
     }
     if (!ready) throw new LocalHarnessError('The owned local PostgREST proxy did not become ready.');
     for (const file of ['test-marketplace-payments-db.ts', 'test-marketplace-events-db.ts', 'test-marketplace-payment-reads-db.ts', 'test-marketplace-account-locks.ts']) {
       const code = await new Promise((resolve, reject) => {
-        const child = spawn(process.execPath, ['--import=tsx', `scripts/${file}`], { stdio: 'inherit', env: { PATH: process.env.PATH, SystemRoot: process.env.SystemRoot, DOCKER_HOST: docker.endpoint, MARKETPLACE_TEST_SUPABASE_URL: 'http://127.0.0.1:55451', MARKETPLACE_TEST_SERVICE_ROLE_KEY: token, MARKETPLACE_TEST_DB_CONTAINER: db.name, MARKETPLACE_TEST_DB_NAME: dbName } });
+        const child = spawn(process.execPath, ['--import=tsx', `scripts/${file}`], { stdio: 'inherit', env: { PATH: process.env.PATH, SystemRoot: process.env.SystemRoot, NODE_USE_ENV_PROXY: '0', DOCKER_HOST: docker.endpoint, MARKETPLACE_TEST_SUPABASE_URL: 'http://127.0.0.1:55451', MARKETPLACE_TEST_SERVICE_ROLE_KEY: token, MARKETPLACE_TEST_DB_CONTAINER: db.name, MARKETPLACE_TEST_DB_NAME: dbName } });
         child.on('error', reject); child.on('exit', resolve);
       });
       if (code !== 0) throw new Error('Local integration child failed.');
