@@ -146,3 +146,29 @@ test('durable mapping without a provider account ID reports pending', async () =
   f.setPendingMapping();
   assert.deepEqual(await (await handleSellerStatus(f.req({}, f.cookie(verified)), f.deps)).json(), { verified: true, connection: 'pending' });
 });
+
+test('logout exhausts its persistent IP budget before revocation', async () => {
+  const f = fixture(); const verified = await f.verify(await f.challenge()); const cookie = f.cookie(verified);
+  const revoke = f.deps.store.revokeSellerSession; let revocations = 0;
+  f.deps.store.revokeSellerSession = async (hash, tenant) => { revocations++; await revoke(hash, tenant); };
+  const logs: unknown[] = []; const previous = { error: console.error, log: console.log, warn: console.warn };
+  console.error = console.log = console.warn = (...args) => { logs.push(args); };
+  try {
+    // Requests without a seller capability must still share the persistent IP budget.
+    for (let i = 0; i < 30; i++) {
+      const allowed = await handleSellerLogout(f.req({}), f.deps);
+      assert.equal(allowed.status, 200); assert.ok(allowed.headers.get('set-cookie')?.includes('Max-Age=0'));
+    }
+    const denied = await handleSellerLogout(f.req({}, cookie), f.deps);
+    assert.equal(denied.status, 429);
+    assert.deepEqual(await denied.json(), { error: 'Too many attempts. Please try again in an hour.' });
+    assert.equal(denied.headers.get('retry-after'), '3600'); assert.equal(denied.headers.get('set-cookie'), null);
+    assert.equal(revocations, 0); assert.equal(f.sessions.size, 1);
+    assert.ok([...f.rates.keys()].some(key => key.endsWith(':payment-seller-logout-ip')));
+    await requireSeller(f.req({}, cookie), f.deps);
+  } finally { Object.assign(console, previous); }
+  assert.deepEqual(logs, []);
+  const allowed = fixture(); const v = await allowed.verify(await allowed.challenge());
+  const result = await handleSellerLogout(allowed.req({}, allowed.cookie(v)), allowed.deps);
+  assert.equal(result.status, 200); assert.ok(result.headers.get('set-cookie')?.includes('Max-Age=0')); assert.equal(allowed.sessions.size, 0);
+});

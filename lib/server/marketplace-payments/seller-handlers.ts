@@ -74,6 +74,8 @@ export async function handleSellerVerify(req: Request, injected?: PaymentDeps): 
 export async function handleSellerLogout(req: Request, injected?: PaymentDeps): Promise<Response> {
   try {
     const deps = checkedDeps(injected); assertPaymentOrigin(req, deps.context); await readPaymentJson(req);
+    // Persistent 30/hour/IP budget, separate from verification and shared even without a cookie.
+    await rate(req, deps, 'payment-seller-logout-ip', 30);
     const capability = token(req, 'seller', deps);
     if (validCapability(capability)) await deps.store.revokeSellerSession(proofHash('seller-session', capability, deps.secret), deps.context.tenant);
     return jsonResponse({ verified: false }, 200, { 'Set-Cookie': capabilityCookie('seller', '', 0, secure(deps)) });
