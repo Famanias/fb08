@@ -52,9 +52,10 @@ test('browse forwards validated server filters and rejects malformed filters', a
   assert.deepEqual(deps.calls, ['browse:Books:2']);
   assert.equal((await handleBrowse(new Request(`${origin}/api/marketplace/listings?sort=private`), deps)).status, 400);
 });
-async function createRequest() {
+async function createRequest(extra: Record<string, string> = {}) {
   const bytes = await sharp({ create: { width: 8, height: 8, channels: 3, background: '#3b5998' } }).png().toBuffer();
   const form = new FormData();
+  for (const [key, value] of Object.entries(extra)) form.set(key, value);
   for (const [key, value] of Object.entries({ title: 'Camera', description: 'Works', price: '10.50', category: 'Electronics', sellerEmail: 'private@example.com' })) form.set(key, value);
   form.set('photo', new File([bytes], 'camera.png', { type: 'image/png' }));
   return new Request(`${origin}/api/marketplace/listings`, { method: 'POST', headers: { origin, 'idempotency-key': ID }, body: form });
@@ -65,6 +66,16 @@ test('publication uploads a decoded image, saves atomically and cleans up unused
   assert.equal(response.status, 201);
   assert.deepEqual(await response.json(), { id: ID });
   assert.deepEqual(deps.calls, ['rate', 'upload', 'publish', 'cleanup']);
+});
+test('sandbox publication uses only server tenant and fingerprints inventory kind', async () => {
+  const deps = fixture(); const calls: Array<{ fingerprint: string; kind: string; tenant?: string }> = [];
+  deps.store.publish = async (_key, fingerprint, _id, _path, input, tenant) => { calls.push({ fingerprint, kind: input.inventoryKind, tenant }); return ID; };
+  assert.equal((await handleCreate(await createRequest(), { ...deps, paymentTenant: 'local' })).status, 201);
+  assert.equal((await handleCreate(await createRequest({ inventoryKind: 'sandbox' }), { ...deps, paymentTenant: 'local' })).status, 201);
+  assert.equal(calls[0].tenant, undefined); assert.equal(calls[1].tenant, 'local');
+  assert.notEqual(calls[0].fingerprint, calls[1].fingerprint);
+  assert.equal((await handleCreate(await createRequest({ inventoryKind: 'sandbox', paymentTenant: 'forged' }), deps)).status, 400);
+  assert.equal(calls.length, 2);
 });
 test('ambiguous publication failure retains the photo until safe orphan reconciliation', async () => {
   const deps = fixture(); deps.store.publish = async () => { throw new Error('private@example.com'); };

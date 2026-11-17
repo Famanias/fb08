@@ -7,9 +7,9 @@ export type ListingFilters = { q: string; category: MarketplaceCategory | 'All';
 export type PublicListing = {
   id: string; title: string; description: string; price: number; currency: 'PHP';
   category: MarketplaceCategory; sellerDisplayName: string; imageUrl: string;
-  createdAt: string; status: 'active' | 'sold';
+  createdAt: string; status: 'active' | 'sold'; inventoryKind: 'ordinary' | 'demo' | 'sandbox';
 };
 export type ListingPage = { listings: PublicListing[]; total: number; hasMore: boolean };
-export type CreateListingInput = { title: string; description: string; price: string; category: MarketplaceCategory; sellerDisplayName: string; sellerEmail: string };
+export type CreateListingInput = { title: string; description: string; price: string; category: MarketplaceCategory; sellerDisplayName: string; sellerEmail: string; inventoryKind: 'ordinary' | 'sandbox' };
 export type InquiryInput = { listingId: string; buyerName: string; buyerEmail: string; message: string };
 export function formatPrice(price: number) { return new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(price); }
