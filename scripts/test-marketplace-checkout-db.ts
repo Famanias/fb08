@@ -26,11 +26,11 @@ async function main() {
   store.attachSession = async (...args) => { const result = await originalAttach(...args); if (loseAttach) { loseAttach = false; throw new Error('Committed attach response lost'); } return result; };
   const checked = (result: { error: { code?: string } | null }) => { if (result.error) throw new Error(`Local fixture database operation failed (${result.error.code ?? 'unknown'})`); };
   const unused = async (): Promise<never> => { throw new Error('Unexpected provider operation'); };
-  const sdk: PaymentSdk = { accounts: { create: unused, async retrieve(id) {
+  const sdk: PaymentSdk = { charges: { retrieve: unused }, balanceTransactions: { retrieve: unused }, accounts: { create: unused, async retrieve(id) {
     accountReads++;
     if (deleted) return { id, object: 'account', deleted: true } as Stripe.DeletedAccount;
     return { id, object: 'account', country: 'US', details_submitted: true, charges_enabled: true, payouts_enabled: true, capabilities: { card_payments: 'active' }, requirements: { disabled_reason: null, currently_due: [], past_due: [], pending_verification: [], errors: [] }, controller: { fees: { payer: 'account' }, losses: { payments: 'stripe' }, requirement_collection: 'stripe', stripe_dashboard: { type: 'full' } }, metadata: { fb08_app: 'marketplace-payments-v1', tenant, seller_id: sellerId } } as unknown as Stripe.Account;
-  } }, accountLinks: { create: unused }, paymentIntents: { retrieve: unused }, checkout: { sessions: {
+  } }, accountLinks: { create: unused }, paymentIntents: { cancel: unused, retrieve: unused }, checkout: { sessions: { expire: unused,
     async create(params, options) {
       created.push({ params: structuredClone(params), options: { ...options } });
       assert.equal(options.stripeAccount, accountId); assert.equal(options.apiVersion, '2026-10-28.endive');

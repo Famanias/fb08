@@ -28,7 +28,7 @@ function fixture() {
     async attachSession(id, _tenant, c) { const o = orders.find(o => o.id === id)!; o.sessionId = c.sessionId; o.state = 'open'; if (loseAttach) { loseAttach = false; throw new Error('DB committed, response lost'); } return { ...o }; },
     async findOrder(id, tenant) { return orders.find(o => o.id === id && o.tenant === tenant) ?? null; },
   };
-  const deps: PaymentDeps = { store, context: { tenant: 'local', origin: 'https://market.example.invalid', enabled: true }, secret: 'fictional-32-character-payment-session-secret', now: () => now, randomBytes, mailer: { sendCode: unused }, stripe: {
+  const deps: PaymentDeps = { store, context: { tenant: 'local', origin: 'https://market.example.invalid', enabled: true }, secret: 'fictional-32-character-payment-session-secret', now: () => now, randomBytes, mailer: { sendCode: unused }, stripe: { expireCheckout: unused, readSettlement: unused, verifyEvent: () => { throw new Error('Unexpected event'); },
     ensureAccount: unused, onboardingLink: unused,
     async readAccount(id) { return { accountId: id, ready, connection: ready ? 'ready' : 'restricted', checkedAt: now.toISOString(), metadata: { fb08_app: 'marketplace-payments-v1', tenant: 'local', seller_id: account.sellerId } }; },
     async createCheckout(o) { assert.ok(orders[0].createParams, 'parameters persisted before provider'); calls.creates.push(structuredClone(o)); if (loseCreate) { loseCreate = false; throw new Error('provider accepted, response lost'); } return { sessionId: 'cs_test_fixture', url: 'https://checkout.stripe.com/c/pay/fixture' }; },
@@ -106,4 +106,12 @@ test('unsafe hosted URL never reaches browser and disabled new creation reserves
   const f = fixture(); f.deps.context.enabled = false; assert.equal((await handleCheckout(f.req(), f.deps)).status, 503); assert.equal(f.calls.reserve, 0);
   f.deps.context.enabled = true; const read = f.deps.stripe.readCheckout; f.deps.stripe.readCheckout = async (o, id) => ({ ...await read(o, id), url: 'https://checkout.stripe.com.evil.invalid/c/pay/x' });
   assert.equal((await handleCheckout(f.req(), f.deps)).status, 503);
+});
+test('late attach paid/review and conflicting bound session only return the scoped order page', async () => {
+  for (const state of ['paid', 'review', 'open'] as const) {
+    const f = fixture(); const created = await handleCheckout(f.req(), f.deps); assert.equal(created.status, 201);
+    f.deps.store.attachSession = async () => ({ ...f.orders[0], state, sessionId: state === 'open' ? 'cs_other_bound' : f.orders[0].sessionId });
+    const result = await handleCheckout(f.req(), f.deps); assert.equal(result.status, 201);
+    assert.equal((await result.json()).url, `${f.deps.context.origin}/marketplace/orders/${f.orders[0].id}`);
+  }
 });

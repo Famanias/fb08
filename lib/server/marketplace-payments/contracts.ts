@@ -39,7 +39,6 @@ export interface StripeGateway {
   readSettlement(order: StoredOrder): Promise<Settlement | null>;
   verifyEvent(raw: Buffer, signature: string): VerifiedPaymentEvent;
 }
-// Later tasks implement expiry/settlement/signature verification. No runtime stubs.
 export type OnboardingStripeGateway = Pick<StripeGateway, 'ensureAccount' | 'readAccount' | 'onboardingLink'>;
 export type CheckoutStripeGateway = OnboardingStripeGateway & Pick<StripeGateway, 'createCheckout' | 'readCheckout'>;
 export type SellerChallenge = { id: string; emailNormalized: string; browserHash: string; expiresAt: string };
@@ -47,7 +46,7 @@ export interface SellerMailer {
   sendCode(input: { to: string; code: string; expiresMinutes: 10; challengeId: string }): Promise<void>;
 }
 export type PaymentDeps = {
-  store: PaymentStore; mailer: SellerMailer; stripe: CheckoutStripeGateway; context: PaymentContext; secret: string;
+  store: PaymentStore; mailer: SellerMailer; stripe: StripeGateway; context: PaymentContext; secret: string;
   now: () => Date; randomBytes: (size: number) => Buffer;
 };
 export interface PaymentStore {

@@ -66,7 +66,7 @@ export async function ensureCheckout(order: StoredOrder, deps: PaymentDeps): Pro
   }
   const canonical = await deps.stripe.readCheckout(prepared, sessionId);
   const attached = await deps.store.attachSession(order.id, prepared.tenant, canonical);
-  if (attached.state !== 'open' || canonical.status !== 'open' || canonical.paymentStatus !== 'unpaid') return { orderId: order.id, url: orderUrl };
+  if (attached.state !== 'open' || attached.sessionId !== canonical.sessionId || canonical.status !== 'open' || canonical.paymentStatus !== 'unpaid') return { orderId: order.id, url: orderUrl };
   if (!canonical.url) unavailable();
   assertCheckoutUrl(canonical.url);
   return { orderId: order.id, url: canonical.url };
