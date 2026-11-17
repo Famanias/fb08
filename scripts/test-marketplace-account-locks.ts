@@ -1,14 +1,16 @@
 /** Two-connection regression on the named owned disposable stack only. No provider access. */
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
+import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
+import { db, dbName, LocalHarnessError, openLocalDocker, inspectOwnedContainer, inspectOwnedNetwork } from './local-marketplace-docker.cjs';
 
 class LocalSqlSession {
-  private child = spawn('docker', ['exec', '-i', process.env.MARKETPLACE_TEST_DB_CONTAINER ?? 'fb08-payments-task1-db', 'psql', '-U', 'postgres', '-d', process.env.MARKETPLACE_TEST_DB_NAME ?? 'payments_red', '-XAtq', '-v', 'ON_ERROR_STOP=1'], { stdio: 'pipe' });
+  private child: ChildProcessWithoutNullStreams;
   private buffer = ''; private stderr = '';
   private pending: { marker: string; lines: string[]; resolve: (lines: string[]) => void; reject: (error: Error) => void } | null = null;
-  constructor() {
+  constructor(docker: ReturnType<typeof openLocalDocker>, containerId: string) {
+    this.child = spawn('docker', docker.args(['exec', '-i', containerId, 'psql', '-U', 'postgres', '-d', dbName, '-XAtq', '-v', 'ON_ERROR_STOP=1']), { env: { ...docker.env, NODE_ENV: 'test' }, stdio: 'pipe' });
     this.child.stdout.setEncoding('utf8'); this.child.stderr.setEncoding('utf8');
     this.child.stderr.on('data', value => { this.stderr += value; });
     this.child.stdout.on('data', value => {
@@ -30,8 +32,8 @@ class LocalSqlSession {
   close() { this.child.stdin.end('\\q\n'); }
 }
 
-async function scenario(kind: 'save' | 'acquire') {
-  const holder = new LocalSqlSession(); const worker = new LocalSqlSession();
+async function scenario(kind: 'save' | 'acquire', docker: ReturnType<typeof openLocalDocker>, containerId: string) {
+  const holder = new LocalSqlSession(docker, containerId); const worker = new LocalSqlSession(docker, containerId);
   const id = randomUUID(); const tenant = `locks-${id}`; const account = `acct_${id.replaceAll('-', '')}`; const app = `worker-${id}`;
   // Values interpolated below are generated UUIDs or fixed literals, never caller input.
   const row = `tenant='${tenant}' and seller_id='${id}'`;
@@ -86,14 +88,19 @@ async function scenario(kind: 'save' | 'acquire') {
   }
 }
 async function main() {
-  const container = process.env.MARKETPLACE_TEST_DB_CONTAINER ?? 'fb08-payments-task1-db';
-  const database = process.env.MARKETPLACE_TEST_DB_NAME ?? 'payments_red';
-  if (!((container === 'fb08-payments-task1-db' && database === 'payments_red') || (container === 'fb08-marketplace-payments-local-db' && database === 'marketplace_payments_local'))) throw new Error('Refusing unowned SQL target.');
+  if ((process.env.MARKETPLACE_TEST_DB_CONTAINER ?? db.name) !== db.name || (process.env.MARKETPLACE_TEST_DB_NAME ?? dbName) !== dbName) {
+    throw new LocalHarnessError('Refusing unowned SQL target.');
+  }
+  const docker = openLocalDocker();
+  const container = inspectOwnedContainer(docker, db, inspectOwnedNetwork(docker));
   let failed = false;
   for (const kind of ['save', 'acquire'] as const) {
-    try { await scenario(kind); }
+    try { await scenario(kind, docker, container.Id); }
     catch (error) { failed = true; console.error(`FAIL ${kind}: ${error instanceof Error ? error.message : 'local regression failed'}`); }
   }
   if (failed) process.exitCode = 1;
 }
-void main();
+main().catch(error => {
+  console.error(error instanceof LocalHarnessError ? error.message : 'Owned local SQL target could not be verified.');
+  process.exitCode = 1;
+});

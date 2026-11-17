@@ -33,8 +33,10 @@ test('fee details remain pending for inconsistent PHP amounts and malformed sett
 
 test('inspector rejects origin and identifier mistakes before database or provider calls', async () => {
   for (const patch of [{ base: 'https://foreign.example' }, { base: 'https://market.example.invalid/' }, { base: 'https://market.example.invalid?secret=PRIVATE' }, { orderId: 'bad' }]) {
-    const f = fixture(); f.deps.store.findOrder = async () => { throw new Error('must not read'); };
+    const f = fixture(); const databaseCalls: string[] = [];
+    f.deps.store = new Proxy(f.deps.store, { get(_target, method) { return async () => { databaseCalls.push(String(method)); throw new Error('must not read'); }; } });
     await assert.rejects(inspectPaymentOrder({ ...f.input, ...patch }, f.deps), /^Error: Payment inspection failed\.$/);
+    assert.deepEqual(databaseCalls, []);
     assert.deepEqual(f.reads, []);
   }
 });
