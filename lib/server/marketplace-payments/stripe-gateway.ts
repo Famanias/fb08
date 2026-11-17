@@ -1,5 +1,5 @@
 import Stripe from 'stripe';
-import type { OnboardingStripeGateway } from './contracts';
+import type { CheckoutStripeGateway, StoredOrder } from './contracts';
 import { validUuid } from '../../../features/marketplace/validation';
 
 // Official stripe@23.1.0 (Node >=20). Keep snapshot webhook version identical.
@@ -11,14 +11,30 @@ export type OnboardingSdk = {
   };
   accountLinks: { create(params: Stripe.AccountLinkCreateParams, options: Stripe.RequestOptions): Promise<Stripe.AccountLink> };
 };
+export type PaymentSdk = OnboardingSdk & {
+  checkout: { sessions: {
+    create(params: Stripe.Checkout.SessionCreateParams, options: Stripe.RequestOptions): Promise<Stripe.Checkout.Session>;
+    retrieve(id: string, params: Stripe.Checkout.SessionRetrieveParams, options: Stripe.RequestOptions): Promise<Stripe.Checkout.Session>;
+  } };
+  paymentIntents: { retrieve(id: string, params: Stripe.PaymentIntentRetrieveParams, options: Stripe.RequestOptions): Promise<Stripe.PaymentIntent> };
+};
 const bounded = { timeout: 5000, maxNetworkRetries: 1 };
 function accountId(value: string) { if (!/^acct_[A-Za-z0-9]{1,100}$/.test(value)) throw new Error('Account unavailable.'); }
-export function createStripeGateway(config: { secretKey: string; tenant: string; country: string; origin: string }, injected?: OnboardingSdk, now: () => Date = () => new Date()): OnboardingStripeGateway {
+export function assertCheckoutUrl(value: string): void {
+  const url = new URL(value);
+  if (url.protocol !== 'https:' || url.hostname !== 'checkout.stripe.com' || url.port || url.username || url.password) throw new Error('Checkout unavailable.');
+}
+export function createStripeGateway(config: { secretKey: string; tenant: string; country: string; origin: string }, injected?: PaymentSdk, now: () => Date = () => new Date()): CheckoutStripeGateway {
   // Lazy: status/logout can construct dependencies without Stripe/email settings.
   let sdk = injected;
-  function client(): OnboardingSdk {
+  function client(): PaymentSdk {
     if (!/^sk_test_[A-Za-z0-9]+$/.test(config.secretKey) || !/^[A-Z]{2}$/.test(config.country)) throw new Error('Payment configuration unavailable.');
     return sdk ??= new Stripe(config.secretKey, { apiVersion: STRIPE_API_VERSION, ...bounded });
+  }
+  function checkoutOptions(order: StoredOrder): Stripe.RequestOptions {
+    accountId(order.accountId);
+    if (order.tenant !== config.tenant || !validUuid(order.id) || !validUuid(order.listingId) || !order.stripeApiVersion || order.stripeApiVersion.length > 100) throw new Error('Checkout unavailable.');
+    return { ...bounded, stripeAccount: order.accountId, apiVersion: order.stripeApiVersion };
   }
   return {
     async ensureAccount(seller, createKey) {
@@ -41,8 +57,34 @@ export function createStripeGateway(config: { secretKey: string; tenant: string;
     async onboardingLink(id, origin) {
       accountId(id); if (origin !== config.origin) throw new Error('Account unavailable.');
       const link = await client().accountLinks.create({ account: id, type: 'account_onboarding', return_url: `${origin}/marketplace/payments/return`, refresh_url: `${origin}/marketplace/payments/refresh` }, bounded);
-      const url = new URL(link.url); if (url.protocol !== 'https:' || url.hostname !== 'connect.stripe.com' || url.username || url.password) throw new Error('Account unavailable.');
+      const url = new URL(link.url); if (url.protocol !== 'https:' || url.hostname !== 'connect.stripe.com' || url.port || url.username || url.password) throw new Error('Account unavailable.');
       return { url: link.url };
+    },
+    async createCheckout(order) {
+      const options = checkoutOptions(order);
+      if (!order.createParams || order.createKey !== `${order.tenant}:checkout:${order.id}:v1` || order.createKey.length > 255) throw new Error('Checkout unavailable.');
+      // The strict database validator owns this immutable JSON snapshot. Do not rebuild it here.
+      const session = await client().checkout.sessions.create(order.createParams as Stripe.Checkout.SessionCreateParams, { ...options, idempotencyKey: order.createKey });
+      if (!/^cs_[A-Za-z0-9_]{1,200}$/.test(session.id) || session.livemode !== false || !session.url) throw new Error('Checkout unavailable.');
+      assertCheckoutUrl(session.url);
+      return { sessionId: session.id, url: session.url };
+    },
+    async readCheckout(order, requestedId) {
+      const options = checkoutOptions(order); const id = requestedId ?? order.sessionId;
+      if (!id || !/^cs_[A-Za-z0-9_]{1,200}$/.test(id) || (order.sessionId && id !== order.sessionId)) throw new Error('Checkout unavailable.');
+      const session = await client().checkout.sessions.retrieve(id, { expand: ['line_items', 'payment_intent'] }, options);
+      if (session.id !== id || !['open', 'complete', 'expired'].includes(session.status ?? '')) throw new Error('Checkout unavailable.');
+      let intent: Stripe.PaymentIntent | null = null;
+      if (typeof session.payment_intent === 'string') {
+        if (!/^pi_[A-Za-z0-9_]{1,200}$/.test(session.payment_intent)) throw new Error('Checkout unavailable.');
+        intent = await client().paymentIntents.retrieve(session.payment_intent, {}, options);
+        if (intent.id !== session.payment_intent) throw new Error('Checkout unavailable.');
+      } else { intent = session.payment_intent; }
+      if (session.url) assertCheckoutUrl(session.url);
+      const items = session.line_items;
+      // Never accept a truncated or absent list as the one fixed purchased item.
+      const quantity = items && !items.has_more && items.data.length === 1 ? items.data[0].quantity ?? 0 : 0;
+      return { sessionId: session.id, accountId: order.accountId, paymentIntentId: intent?.id ?? null, status: session.status as 'open' | 'complete' | 'expired', paymentStatus: session.payment_status, intentStatus: intent?.status ?? null, livemode: session.livemode, currency: session.currency, grossMinor: session.amount_total, feeMinor: intent?.application_fee_amount ?? null, quantity, intentAmountReceivedMinor: intent?.amount_received ?? null, intentCurrency: intent?.currency ?? null, url: session.url, expiresAt: session.expires_at, clientReferenceId: session.client_reference_id, metadata: session.metadata ?? {}, intentMetadata: intent?.metadata ?? {} };
     },
   };
 }

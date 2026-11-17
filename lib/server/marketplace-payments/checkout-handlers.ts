@@ -1,0 +1,87 @@
+import type { PaymentDeps, StoredOrder } from './contracts';
+import { MarketplaceError, validUuid } from '../../../features/marketplace/validation';
+import { jsonResponse, readCookieValue } from '../route-helpers';
+import { createPaymentDeps } from './dependencies';
+import { refreshKnownAccount } from './connect-handlers';
+import { capabilityCookie, capabilityCookieName, newCapability, proofHash, validCapability } from './proof';
+import { assertPaymentOrigin, paymentErrorResponse, readPaymentJson } from './request';
+import { STRIPE_API_VERSION, assertCheckoutUrl } from './stripe-gateway';
+
+function unavailable(): never { throw new MarketplaceError('Payments unavailable.', 503); }
+function secure(deps: PaymentDeps) { return new URL(deps.context.origin).protocol === 'https:'; }
+function buyerToken(req: Request, deps: PaymentDeps) { return readCookieValue(req, capabilityCookieName('buyer', secure(deps))); }
+async function rate(req: Request, deps: PaymentDeps, action: string) {
+  // Only the trusted deployment proxy may supply a client IP; local callers share a budget.
+  const ip = process.env.VERCEL ? req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown' : 'local';
+  const actor = proofHash('browser', JSON.stringify(['ip', deps.context.tenant, ip]), deps.secret);
+  if (!await deps.store.consumeRate(actor, action, 20)) throw new MarketplaceError('Too many attempts.', 429);
+}
+export function requireBuyer(req: Request, deps: PaymentDeps): { accessHash: string } {
+  const token = buyerToken(req, deps);
+  if (!validCapability(token)) throw new MarketplaceError('Start a buyer session.', 401);
+  return { accessHash: proofHash('buyer-session', token, deps.secret) };
+}
+function checkoutError(error: unknown): Response {
+  if (error instanceof MarketplaceError && error.status === 401) return jsonResponse({ error: 'Start a buyer session to continue.' }, 401);
+  if (error instanceof MarketplaceError && error.status === 400) return jsonResponse({ error: 'Invalid payment request.' }, 400);
+  if (error instanceof MarketplaceError && error.status === 404) return paymentErrorResponse(new MarketplaceError('Item unavailable.', 409));
+  return paymentErrorResponse(error);
+}
+export async function handleBuyerSession(req: Request, injected?: PaymentDeps): Promise<Response> {
+  try {
+    const deps = injected ?? createPaymentDeps(true);
+    if (!deps.context.enabled) unavailable();
+    assertPaymentOrigin(req, deps.context);
+    if (Object.keys(await readPaymentJson(req)).length) throw new MarketplaceError('Invalid request.');
+    await rate(req, deps, 'payment-buyer-session-ip');
+    const previous = buyerToken(req, deps); const token = validCapability(previous) ? previous : newCapability(deps.randomBytes);
+    return new Response(null, { status: 204, headers: { 'Cache-Control': 'no-store', 'Set-Cookie': capabilityCookie('buyer', token, 7 * 86400, secure(deps)) } });
+  } catch (error) { return checkoutError(error); }
+}
+
+export async function ensureCheckout(order: StoredOrder, deps: PaymentDeps): Promise<{ orderId: string; url: string }> {
+  if (order.tenant !== deps.context.tenant || !validUuid(order.id) || !validUuid(order.listingId)) unavailable();
+  const metadata = { fb08_app: 'marketplace-payments-v1', tenant: order.tenant, order_id: order.id, listing_id: order.listingId };
+  const orderUrl = `${deps.context.origin}/marketplace/orders/${order.id}`;
+  // prepareCheckout returns the first persisted snapshot on retries, including across deployments.
+  const prepared = await deps.store.prepareCheckout({ orderId: order.id, tenant: order.tenant, apiVersion: STRIPE_API_VERSION, params: {
+    mode: 'payment', payment_method_types: ['card'], client_reference_id: order.id, expires_at: order.checkoutExpiresAt, metadata,
+    line_items: [{ quantity: 1, price_data: { currency: 'php', unit_amount: order.grossMinor, product_data: { name: order.title.replace(/[\u0000-\u001f\u007f-\u009f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 100) || 'Sandbox item' } } }],
+    payment_intent_data: { application_fee_amount: order.feeMinor, metadata },
+    success_url: orderUrl, cancel_url: `${deps.context.origin}/marketplace/${order.listingId}`,
+    automatic_tax: { enabled: false }, adaptive_pricing: { enabled: false }, allow_promotion_codes: false, after_expiration: { recovery: { enabled: false } },
+  } });
+  if (['paid', 'expired', 'review'].includes(prepared.state)) return { orderId: order.id, url: orderUrl };
+  let sessionId = prepared.sessionId;
+  if (!sessionId) {
+    if (!deps.context.enabled) unavailable();
+    const age = +deps.now() - Date.parse(prepared.preparedAt);
+    if (!Number.isFinite(age) || age < 0 || age >= 23 * 3600000 || prepared.checkoutExpiresAt - +deps.now() / 1000 < 1800) unavailable();
+    // The reservation is already committed. Only its winner refreshes, avoiding account-lease contention between buyers.
+    const account = await deps.store.findAccountById(prepared.accountId, prepared.tenant);
+    if (!account || account.sellerId !== prepared.sellerId || !(await refreshKnownAccount(account, deps)).ready) unavailable();
+    // Readiness HTTP/lock waits can consume the last safe seconds of the unchanged expiry.
+    if (prepared.checkoutExpiresAt - +deps.now() / 1000 < 1800 || +deps.now() - Date.parse(prepared.preparedAt) >= 23 * 3600000) unavailable();
+    sessionId = (await deps.stripe.createCheckout(prepared)).sessionId;
+  }
+  const canonical = await deps.stripe.readCheckout(prepared, sessionId);
+  const attached = await deps.store.attachSession(order.id, prepared.tenant, canonical);
+  if (attached.state !== 'open' || canonical.status !== 'open' || canonical.paymentStatus !== 'unpaid') return { orderId: order.id, url: orderUrl };
+  if (!canonical.url) unavailable();
+  assertCheckoutUrl(canonical.url);
+  return { orderId: order.id, url: canonical.url };
+}
+
+export async function handleCheckout(req: Request, injected?: PaymentDeps): Promise<Response> {
+  try {
+    const deps = injected ?? createPaymentDeps(true);
+    if (!deps.context.enabled) unavailable();
+    assertPaymentOrigin(req, deps.context);
+    const buyer = requireBuyer(req, deps); const body = await readPaymentJson(req);
+    const key = req.headers.get('idempotency-key');
+    if (!validUuid(body.listingId) || Object.keys(body).length !== 1 || !validUuid(key)) throw new MarketplaceError('Invalid request.');
+    await rate(req, deps, 'payment-checkout-ip');
+    const order = await deps.store.reserve({ listingId: body.listingId, tenant: deps.context.tenant, buyerAccessHash: buyer.accessHash, submissionKey: key, now: deps.now() });
+    return jsonResponse(await ensureCheckout(order, deps), 201);
+  } catch (error) { return checkoutError(error); }
+}
