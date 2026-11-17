@@ -23,19 +23,32 @@ exception when unique_violation then raise exception 'account_conflict';
 end $$;
 create function public.marketplace_acquire_account_refresh(p_tenant text,p_account_id text,p_lease_id text)
 returns boolean language plpgsql security invoker set search_path = '' as $$
+declare a public.marketplace_connected_accounts; locked_at timestamptz;
 begin
   if p_lease_id is null or p_lease_id !~ '^[a-f0-9]{64}$' then return false; end if;
-  update public.marketplace_connected_accounts set refresh_lease_id=p_lease_id,refresh_expires_at=clock_timestamp()+interval '20 seconds',ready=false,connection='pending',checked_at=null
-    where tenant=p_tenant and account_id=p_account_id and (refresh_expires_at is null or refresh_expires_at<=clock_timestamp());
+  select * into a from public.marketplace_connected_accounts where tenant=p_tenant and account_id=p_account_id for update;
+  if not found then return false; end if;
+  -- The row lock can wait. Start the full lease only after that wait finishes.
+  locked_at:=clock_timestamp();
+  if a.refresh_expires_at is not null and a.refresh_expires_at>locked_at then return false; end if;
+  update public.marketplace_connected_accounts set refresh_lease_id=p_lease_id,refresh_expires_at=locked_at+interval '20 seconds',ready=false,connection='pending',checked_at=null
+    where tenant=p_tenant and account_id=p_account_id;
   return found;
 end $$;
 create function public.marketplace_save_account_readiness(p_tenant text,p_account_id text,p_lease_id text,p_ready boolean,p_connection text,p_checked_at timestamptz)
 returns boolean language plpgsql security invoker set search_path = '' as $$
+declare a public.marketplace_connected_accounts; locked_at timestamptz;
 begin
   if p_ready is null or p_connection is null or p_connection not in ('pending','ready','restricted') or p_ready<>(p_connection='ready') or p_checked_at is null or not isfinite(p_checked_at) then return false; end if;
+  select * into a from public.marketplace_connected_accounts where tenant=p_tenant and account_id=p_account_id for update;
+  if not found then return false; end if;
+  -- UPDATE qualification can predate a FOR SHARE wait on an unchanged tuple.
+  -- Check the fence against fresh DB time only after owning its row lock.
+  locked_at:=clock_timestamp();
+  if a.refresh_lease_id is distinct from p_lease_id or a.refresh_expires_at is null or a.refresh_expires_at<=locked_at then return false; end if;
   update public.marketplace_connected_accounts set ready=p_ready,connection=p_connection,
-    checked_at=least(p_checked_at,clock_timestamp()),refresh_lease_id=null,refresh_expires_at=null
-    where tenant=p_tenant and account_id=p_account_id and refresh_lease_id=p_lease_id and refresh_expires_at>clock_timestamp();
+    checked_at=least(p_checked_at,locked_at),refresh_lease_id=null,refresh_expires_at=null
+    where tenant=p_tenant and account_id=p_account_id;
   return found;
 end $$;
 revoke all on function public.marketplace_ensure_account_slot(text,uuid),public.marketplace_save_account(text,uuid,text,text),public.marketplace_acquire_account_refresh(text,text,text),public.marketplace_save_account_readiness(text,text,text,boolean,text,timestamptz) from public,anon,authenticated;
