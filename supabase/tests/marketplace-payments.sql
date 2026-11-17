@@ -28,7 +28,8 @@ insert into public.marketplace_listings(id,title,description,price,category,sell
 select ('10000000-0000-4000-8000-00000000000'||n)::uuid,'Test '||n,'Fictional local test',1234.50,'Other','Test','listings/10000000-0000-4000-8000-00000000000'||n||'.webp',
   case n when 1 then 'ordinary' when 2 then 'demo' else 'sandbox' end from generate_series(1,5) n;
 insert into public.marketplace_listing_contacts select id,'Test@Example.invalid' from public.marketplace_listings where id::text like '10000000-0000-4000-8000-00000000000%';
-insert into public.marketplace_payment_inventory(listing_id,tenant) select id,'local-test' from public.marketplace_listings where inventory_kind='sandbox';
+insert into public.marketplace_payment_inventory(listing_id,tenant) select id,'local-test' from public.marketplace_listings
+where id in ('10000000-0000-4000-8000-000000000003','10000000-0000-4000-8000-000000000004','10000000-0000-4000-8000-000000000005');
 insert into public.marketplace_payment_sellers(id,tenant,email_normalized,verified_at) values('20000000-0000-4000-8000-000000000001','local-test','test@example.invalid',now());
 insert into public.marketplace_connected_accounts(tenant,seller_id,account_id,ready,connection,checked_at,account_create_key)
 values('local-test','20000000-0000-4000-8000-000000000001','acct_local',true,'ready',now(),'local-create');
@@ -37,7 +38,7 @@ select pg_temp.expect_error($q$select public.marketplace_reserve_order('local-te
 select pg_temp.expect_error($q$select public.marketplace_reserve_order('local-test','10000000-0000-4000-8000-000000000002','buyer','30000000-0000-4000-8000-000000000001',now())$q$,'listing_unavailable');
 select pg_temp.expect_error($q$select public.marketplace_reserve_order('wrong','10000000-0000-4000-8000-000000000003','buyer','30000000-0000-4000-8000-000000000001',now())$q$,'listing_unavailable');
 do $$
-declare a jsonb; b jsonb; c jsonb; params jsonb; result text;
+declare a jsonb; b jsonb; c jsonb; params jsonb; result text; changed jsonb;
 begin
   a:=public.marketplace_reserve_order('local-test','10000000-0000-4000-8000-000000000003','buyer','30000000-0000-4000-8000-000000000001',now());
   b:=public.marketplace_reserve_order('local-test','10000000-0000-4000-8000-000000000003','buyer','30000000-0000-4000-8000-000000000001',now());
@@ -49,6 +50,25 @@ begin
     'line_items',jsonb_build_array(jsonb_build_object('quantity',1,'price_data',jsonb_build_object('currency','php','unit_amount',123450))),
     'payment_intent_data',jsonb_build_object('application_fee_amount',12345,'metadata',jsonb_build_object('fb08_app','marketplace-payments-v1','tenant','local-test','order_id',a->>'id','listing_id',a->>'listing_id')));
   perform pg_temp.expect_error(format('select public.marketplace_prepare_checkout(%L,%L,%L,%L)','local-test',a->>'id',jsonb_set(params,'{line_items,0,price_data,unit_amount}','10000'),'test-version'),'invalid_checkout');
+  -- The initial quantity alone is insufficient: hosted Checkout must not change it or the amount.
+  for changed in select value from jsonb_array_elements(jsonb_build_array(
+    jsonb_set(params,'{line_items,0,adjustable_quantity}','{"enabled":true,"minimum":1,"maximum":2}'),
+    jsonb_set(params,'{line_items,0,tax_rates}','["txr_test"]'),
+    jsonb_set(params,'{line_items,0,dynamic_tax_rates}','["txr_test"]'),
+    jsonb_set(params,'{line_items,0,discounts}','[{"coupon":"coupon_test"}]'),
+    jsonb_set(params,'{line_items,0,price_data,recurring}','{"interval":"month"}'),
+    params||'{"automatic_tax":{"enabled":true}}'::jsonb,
+    params||'{"adaptive_pricing":{"enabled":true}}'::jsonb,
+    params||'{"allow_promotion_codes":true}'::jsonb,
+    params||'{"discounts":[{"coupon":"coupon_test"}]}'::jsonb,
+    params||'{"optional_items":[{"price":"price_test","quantity":1}]}'::jsonb,
+    params||'{"after_expiration":{"recovery":{"enabled":true}}}'::jsonb
+  )) loop
+    perform pg_temp.expect_error(format('select public.marketplace_prepare_checkout(%L,%L,%L,%L)','local-test',a->>'id',changed,'test-version'),'invalid_checkout');
+  end loop;
+  assert (select create_params is null from public.marketplace_orders where id=(a->>'id')::uuid), 'rejected params must never be persisted';
+  params:=jsonb_set(params,'{line_items,0}',params#>'{line_items,0}'||'{"adjustable_quantity":{"enabled":false},"tax_rates":[],"dynamic_tax_rates":[],"discounts":[]}'::jsonb)
+    ||'{"automatic_tax":{"enabled":false},"adaptive_pricing":{"enabled":false},"allow_promotion_codes":false,"discounts":[],"shipping_options":[],"after_expiration":{"recovery":{"enabled":false}}}'::jsonb;
   b:=public.marketplace_prepare_checkout('local-test',(a->>'id')::uuid,params,'test-version');
   b:=public.marketplace_prepare_checkout('local-test',(a->>'id')::uuid,'{}','different-version');
   assert b->'create_params'=params and b->>'stripe_api_version'='test-version', 'first prepared request must be immutable';
