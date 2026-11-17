@@ -21,7 +21,7 @@ async function main() {
   const created: Array<{ params: Stripe.Checkout.SessionCreateParams; options: Stripe.RequestOptions }> = [];
   const store = createPaymentStore(db); const baseRate = store.consumeRate;
   store.consumeRate = async (actor, action, limit) => { actors.add(actor); return baseRate(actor, action, limit); };
-  let now = new Date(); let loseCreate = false; let deleted = false; let accountReads = 0; let loseAttach = false;
+  let now = new Date(); let loseCreate = false; let deleted = false; let accountReads = 0; let sessionReads = 0; let loseAttach = false;
   const originalAttach = store.attachSession;
   store.attachSession = async (...args) => { const result = await originalAttach(...args); if (loseAttach) { loseAttach = false; throw new Error('Committed attach response lost'); } return result; };
   const checked = (result: { error: { code?: string } | null }) => { if (result.error) throw new Error(`Local fixture database operation failed (${result.error.code ?? 'unknown'})`); };
@@ -42,7 +42,7 @@ async function main() {
       if (loseCreate) { loseCreate = false; throw new Error('Accepted create response lost'); }
       return session;
     },
-    async retrieve(id, _params, options) { assert.equal(options.stripeAccount, accountId); assert.equal(options.apiVersion, '2026-10-28.endive'); const s = [...sessions.values()].find(s => s.id === id); assert.ok(s); return s; },
+    async retrieve(id, _params, options) { sessionReads++; assert.equal(options.stripeAccount, accountId); assert.equal(options.apiVersion, '2026-10-28.endive'); const s = [...sessions.values()].find(s => s.id === id); assert.ok(s); return s; },
   } } };
   const deps: PaymentDeps = { store, context: { tenant, origin: 'https://market.example.invalid', enabled: true }, secret: `fictional-checkout-secret-${run}`, now: () => now, randomBytes, mailer: { sendCode: unused }, stripe: createStripeGateway({ tenant, origin: 'https://market.example.invalid', country: 'US', secretKey: 'sk_test_fixture' }, sdk, () => now) };
   const request = (listingId: string, cookie = `__Host-fb08_mp_buyer=${randomBytes(32).toString('base64url')}`, submissionKey = randomUUID(), extra: Record<string, unknown> = {}, headers: Record<string, string> = {}) => new Request('https://market.example.invalid/api/marketplace/payments/checkout', { method: 'POST', headers: { origin: deps.context.origin, 'sec-fetch-site': 'same-origin', 'content-type': 'application/json', 'idempotency-key': submissionKey, cookie, ...headers }, body: JSON.stringify({ listingId, ...extra }) });
@@ -93,11 +93,40 @@ async function main() {
     loseCreate = true; assert.equal((await send()).status, 503);
     const frozen = await db.from('marketplace_orders').select('*').eq('listing_id', retryListing).single(); checked(frozen); assert.ok(frozen.data.create_params); assert.equal(frozen.data.gross_minor, 123450); assert.equal(frozen.data.fee_minor, 12345);
     loseAttach = true; assert.equal((await send()).status, 503);
-    assert.equal((await send()).status, 201);
+    assert.equal((await store.getPublicPaymentStates([retryListing], deps.context))[retryListing].availability, 'reserved');
+    const resume = () => handleCheckout(request(retryListing, cookie, retryKey, { resumeOnly: true }), deps);
+    const readsBeforeDenied = sessionReads;
+    for (const denied of [
+      request(retryListing, undefined, retryKey, { resumeOnly: true }),
+      request(retryListing, '', retryKey, { resumeOnly: true }),
+      request(retryListing, cookie, randomUUID(), { resumeOnly: true }),
+      request(guarded, cookie, retryKey, { resumeOnly: true }),
+    ]) assert.equal((await handleCheckout(denied, deps)).status, 409);
+    assert.equal(sessionReads, readsBeforeDenied);
+    const stale = await db.from('marketplace_orders').select('id').eq('listing_id', guarded); checked(stale); assert.equal(stale.data?.length, 0);
+    const resumed = await resume();
+    assert.equal(resumed.status, 201);
+    assert.deepEqual(await resumed.json(), { orderId: frozen.data.id, url: 'https://checkout.stripe.com/c/pay/fixture' });
     const retryCreates = created.filter(c => c.options.idempotencyKey === frozen.data.create_key); assert.equal(retryCreates.length, 2); assert.deepEqual(retryCreates[0], retryCreates[1]);
     assert.equal((await handleCheckout(request(guarded, cookie, retryKey), deps)).status, 409);
     const bootstrap = new Request('https://market.example.invalid/api/marketplace/payments/buyer-session', { method: 'POST', headers: { origin: deps.context.origin, 'sec-fetch-site': 'same-origin', 'content-type': 'application/json', cookie }, body: '{}' });
     const proofBefore = requireBuyer(bootstrap, deps).accessHash; const boot = await handleBuyerSession(bootstrap, deps); assert.equal(boot.status, 204); assert.equal(boot.headers.get('set-cookie')!.split(';')[0], cookie); assert.equal(proofBefore, frozen.data.buyer_access_hash);
+
+    const previous = await store.findOrder(frozen.data.id, tenant); assert.ok(previous);
+    const canonical = await deps.stripe.readCheckout(previous);
+    assert.equal(await store.applyCheckout({ orderId: previous.id, tenant, eventId: 'operator:' + randomUUID(), eventType: 'operator.reconcile', canonical: { ...canonical, status: 'expired', url: null }, now }), 'expired');
+    const createsBeforeExpiryReply = created.length;
+    const terminal = await resume();
+    assert.equal(terminal.status, 201);
+    assert.deepEqual(await terminal.json(), { orderId: previous.id, url: deps.context.origin + '/marketplace/orders/' + previous.id, expired: true });
+    assert.equal(created.length, createsBeforeExpiryReply);
+    assert.equal((await store.getPublicPaymentStates([retryListing], deps.context))[retryListing].availability, 'ready');
+    const fresh = await handleCheckout(request(retryListing, cookie, randomUUID()), deps);
+    assert.equal(fresh.status, 201);
+    assert.notEqual((await fresh.json()).orderId, previous.id);
+    assert.equal(created.length, createsBeforeExpiryReply + 1);
+    console.log('PASS: same cookie/listing/key resumed one real reservation; absent/wrong proof and stale resume made no provider calls or new hold; persisted expiry allowed an explicit fresh key.');
+
     const ambiguousListing = await listing(); const ambiguousKey = randomUUID(); loseCreate = true;
     assert.equal((await handleCheckout(request(ambiguousListing, cookie, ambiguousKey), deps)).status, 503);
     const callsBeforeClock = created.length;
@@ -107,6 +136,7 @@ async function main() {
     const ambiguous = await db.from('marketplace_orders').select('state').eq('listing_id', ambiguousListing); checked(ambiguous); assert.equal(ambiguous.data?.length, 1); assert.equal(ambiguous.data![0].state, 'preparing');
     console.log('PASS: lost create/committed attach responses recover exact key/params; bootstrap preserves order proof; unsafe retry clocks retain one hold without rekey/release.');
   } finally {
+    checked(await db.from('marketplace_stripe_events').delete().eq('tenant', tenant));
     checked(await db.from('marketplace_orders').delete().eq('tenant', tenant));
     if (listingIds.length) { checked(await db.from('marketplace_payment_inventory').delete().in('listing_id', listingIds)); checked(await db.from('marketplace_listings').delete().in('id', listingIds)); }
     checked(await db.from('marketplace_connected_accounts').delete().eq('tenant', tenant));

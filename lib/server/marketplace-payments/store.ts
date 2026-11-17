@@ -106,6 +106,13 @@ export function createPaymentStore(db: SupabaseClient = getSupabaseAdminClient()
       return data?.connection ?? null;
     },
     async reserve(input) { return storedOrder(await rpc('marketplace_reserve_order', { p_tenant: input.tenant, p_listing_id: input.listingId, p_buyer_hash: input.buyerAccessHash, p_key: input.submissionKey, p_now: input.now.toISOString() })); },
+    async findCheckoutReservation(input) {
+      const { data, error } = await db.from('marketplace_orders').select('*')
+        .eq('tenant', input.tenant).eq('listing_id', input.listingId)
+        .eq('buyer_access_hash', input.buyerAccessHash).eq('submission_key', input.submissionKey).maybeSingle();
+      checked(error);
+      return data ? storedOrder(data) : null;
+    },
     async prepareCheckout(input) {
       const order = storedOrder(await rpc('marketplace_prepare_checkout', { p_tenant: input.tenant, p_order_id: input.orderId, p_params: input.params, p_api_version: input.apiVersion }));
       if (!order.createParams || !order.stripeApiVersion) throw new MarketplaceError('Could not prepare payment.', 503);

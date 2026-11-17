@@ -68,7 +68,7 @@ async function main() {
       await delay(250);
     }
     if (!ready) throw new LocalHarnessError('The owned local PostgREST proxy did not become ready.');
-    for (const file of ['test-marketplace-payments-db.ts', 'test-marketplace-events-db.ts', 'test-marketplace-payment-reads-db.ts', 'test-marketplace-account-locks.ts']) {
+    for (const file of ['test-marketplace-payments-db.ts', 'test-marketplace-checkout-db.ts', 'test-marketplace-events-db.ts', 'test-marketplace-payment-reads-db.ts', 'test-marketplace-account-locks.ts']) {
       const code = await new Promise((resolve, reject) => {
         const child = spawn(process.execPath, ['--import=tsx', `scripts/${file}`], { stdio: 'inherit', env: { PATH: process.env.PATH, SystemRoot: process.env.SystemRoot, NODE_USE_ENV_PROXY: '0', DOCKER_HOST: docker.endpoint, MARKETPLACE_TEST_SUPABASE_URL: 'http://127.0.0.1:55451', MARKETPLACE_TEST_SERVICE_ROLE_KEY: token, MARKETPLACE_TEST_DB_CONTAINER: db.name, MARKETPLACE_TEST_DB_NAME: dbName } });
         child.on('error', reject); child.on('exit', resolve);

@@ -100,6 +100,7 @@ function fixtureFor(run, authSecret) {
   const accountId = `acct_${run.replaceAll('-', '')}`;
   const sessionId = `cs_test_${randomBytes(16).toString('hex')}`, intentId = `pi_${randomBytes(16).toString('hex')}`;
   const buyer = randomBytes(32).toString('base64url');
+  const heldSubmission = randomUUID();
   const buyerHash = createHmac('sha256', authSecret).update(JSON.stringify(['fb08-marketplace-payments-v1', 'buyer-session', buyer])).digest('hex');
   const ids = `('${ordinaryId}','${activeId}','${soldId}')`;
   // Only fixed literals and the generated identifiers/canaries above enter SQL.
@@ -119,8 +120,12 @@ function fixtureFor(run, authSecret) {
       values ('${orderId}','${tenant}','${soldId}','${sellerId}','${accountId}','${buyerHash}',clock_timestamp()+interval '7 days',
       '${randomUUID()}','paid','${soldTitle}',123450,12345,'${sessionId}','${intentId}','${randomUUID()}',extract(epoch from now())::bigint,clock_timestamp());
     commit;`;
+  const holdReadyListing = `do $$ begin
+    perform public.marketplace_reserve_order('${tenant}','${activeId}','${buyerHash}','${heldSubmission}',now());
+  end $$;`;
   const cleanup = `begin;
-    delete from public.marketplace_orders where id='${orderId}' and tenant='${tenant}';
+    delete from public.marketplace_orders where tenant='${tenant}' and
+      (id='${orderId}' or (listing_id='${activeId}' and submission_key='${heldSubmission}'));
     delete from public.marketplace_connected_accounts where seller_id='${sellerId}' and tenant='${tenant}';
     delete from public.marketplace_payment_sellers where id='${sellerId}' and tenant='${tenant}';
     delete from public.marketplace_payment_inventory where listing_id in ${ids} and tenant='${tenant}';
@@ -135,7 +140,7 @@ function fixtureFor(run, authSecret) {
       + (select count(*) from public.marketplace_listing_contacts where listing_id in ${ids});
     commit;`;
   return { tenant, ordinaryId, activeId, soldId, orderId, ordinaryTitle, activeTitle, soldTitle, buyer,
-    canaries: [sellerEmail, accountId, sessionId, intentId, buyer, buyerHash], seed, cleanup };
+    canaries: [sellerEmail, accountId, sessionId, intentId, buyer, buyerHash, heldSubmission], seed, holdReadyListing, cleanup };
 }
 
 async function verify({ token, anonToken, sql }) {
@@ -192,6 +197,10 @@ async function verify({ token, anonToken, sql }) {
     expectText(feed, [ordinaryTitle, activeTitle, 'Buy Now'], 'The privacy feed did not render its ordinary and ready sandbox fixtures.');
     if (feed.includes(soldTitle)) throw new LocalHarnessError('The privacy feed exposed the sold sandbox listing.');
     expectText(await request(`/marketplace/${activeId}`), [activeTitle, 'Buy Now'], 'The privacy sandbox detail did not render its ready fixture.');
+    sql(fixture.holdReadyListing);
+    const reserved = await request(`/marketplace/${activeId}`);
+    expectText(reserved, [activeTitle, 'Item held'], 'The privacy sandbox detail did not render its reserved fixture.');
+    if (['Buy Now', 'Retry Checkout', 'Resume Checkout'].some(label => reserved.includes(label))) throw new LocalHarnessError('Generic reserved detail exposed a Checkout action.');
     expectText(await request(`/marketplace/${ordinaryId}`), [ordinaryTitle], 'The privacy ordinary detail did not render its fixture.');
     const sold = await request(`/marketplace/${soldId}`);
     expectText(sold, [soldTitle, 'SOLD', ' | SANDBOX', 'no real money or delivery'], 'The privacy sandbox detail did not render the sold fixture.');
@@ -207,7 +216,7 @@ async function verify({ token, anonToken, sql }) {
     assert.match(JSON.parse(denied).error, /^Order unavailable\./);
     for (const path of ['/marketplace/new', '/marketplace/payments', '/marketplace/payments/return', '/marketplace/payments/refresh', '/', '/?view=people']) await request(path);
     await request('/api/auth/me', { type: 'application/json' });
-    console.log(`PASS: ${responses} owned responses; sandbox feed/detail, paid order page and exact API DTO verified; private canaries absent.`);
+    console.log(`PASS: ${responses} owned responses; ready/reserved detail, paid order page and exact API DTO verified; private canaries absent.`);
   } finally {
     try { await stop(server); }
     finally {

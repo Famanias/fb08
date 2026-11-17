@@ -1,4 +1,5 @@
 import type { PaymentDeps, StoredOrder } from './contracts';
+import type { CheckoutLaunch } from '../../../features/marketplace/payments/types';
 import { MarketplaceError, validUuid } from '../../../features/marketplace/validation';
 import { jsonResponse, readCookieValue } from '../route-helpers';
 import { createPaymentDeps } from './dependencies';
@@ -16,10 +17,14 @@ async function rate(req: Request, deps: PaymentDeps, action: string) {
   const actor = proofHash('browser', JSON.stringify(['ip', deps.context.tenant, ip]), deps.secret);
   if (!await deps.store.consumeRate(actor, action, 20)) throw new MarketplaceError('Too many attempts.', 429);
 }
-export function requireBuyer(req: Request, deps: PaymentDeps): { accessHash: string } {
+function buyerProof(req: Request, deps: PaymentDeps): { accessHash: string } | null {
   const token = buyerToken(req, deps);
-  if (!validCapability(token)) throw new MarketplaceError('Start a buyer session.', 401);
-  return { accessHash: proofHash('buyer-session', token, deps.secret) };
+  return validCapability(token) ? { accessHash: proofHash('buyer-session', token, deps.secret) } : null;
+}
+export function requireBuyer(req: Request, deps: PaymentDeps): { accessHash: string } {
+  const buyer = buyerProof(req, deps);
+  if (!buyer) throw new MarketplaceError('Start a buyer session.', 401);
+  return buyer;
 }
 function checkoutError(error: unknown): Response {
   if (error instanceof MarketplaceError && error.status === 401) return jsonResponse({ error: 'Start a buyer session to continue.' }, 401);
@@ -39,10 +44,12 @@ export async function handleBuyerSession(req: Request, injected?: PaymentDeps): 
   } catch (error) { return checkoutError(error); }
 }
 
-export async function ensureCheckout(order: StoredOrder, deps: PaymentDeps): Promise<{ orderId: string; url: string }> {
+export async function ensureCheckout(order: StoredOrder, deps: PaymentDeps): Promise<CheckoutLaunch> {
   if (order.tenant !== deps.context.tenant || !validUuid(order.id) || !validUuid(order.listingId)) unavailable();
   const metadata = { fb08_app: 'marketplace-payments-v1', tenant: order.tenant, order_id: order.id, listing_id: order.listingId };
   const orderUrl = `${deps.context.origin}/marketplace/orders/${order.id}`;
+  const expiredCheckout = { orderId: order.id, url: orderUrl, expired: true } as const;
+  if (order.state === 'expired') return expiredCheckout;
   // prepareCheckout returns the first persisted snapshot on retries, including across deployments.
   const prepared = await deps.store.prepareCheckout({ orderId: order.id, tenant: order.tenant, apiVersion: STRIPE_API_VERSION, params: {
     mode: 'payment', payment_method_types: ['card'], client_reference_id: order.id, expires_at: order.checkoutExpiresAt, metadata,
@@ -51,7 +58,8 @@ export async function ensureCheckout(order: StoredOrder, deps: PaymentDeps): Pro
     success_url: orderUrl, cancel_url: `${deps.context.origin}/marketplace/${order.listingId}`,
     automatic_tax: { enabled: false }, adaptive_pricing: { enabled: false }, allow_promotion_codes: false, after_expiration: { recovery: { enabled: false } },
   } });
-  if (['paid', 'expired', 'review'].includes(prepared.state)) return { orderId: order.id, url: orderUrl };
+  if (prepared.state === 'expired') return expiredCheckout;
+  if (prepared.state === 'paid' || prepared.state === 'review') return { orderId: order.id, url: orderUrl };
   let sessionId = prepared.sessionId;
   if (!sessionId) {
     if (!deps.context.enabled) unavailable();
@@ -66,6 +74,7 @@ export async function ensureCheckout(order: StoredOrder, deps: PaymentDeps): Pro
   }
   const canonical = await deps.stripe.readCheckout(prepared, sessionId);
   const attached = await deps.store.attachSession(order.id, prepared.tenant, canonical);
+  if (attached.state === 'expired') return expiredCheckout;
   if (attached.state !== 'open' || attached.sessionId !== canonical.sessionId || canonical.status !== 'open' || canonical.paymentStatus !== 'unpaid') return { orderId: order.id, url: orderUrl };
   if (!canonical.url) unavailable();
   assertCheckoutUrl(canonical.url);
@@ -77,11 +86,17 @@ export async function handleCheckout(req: Request, injected?: PaymentDeps): Prom
     const deps = injected ?? createPaymentDeps(true);
     if (!deps.context.enabled) unavailable();
     assertPaymentOrigin(req, deps.context);
-    const buyer = requireBuyer(req, deps); const body = await readPaymentJson(req);
+    const body = await readPaymentJson(req);
+    const resumeOnly = body.resumeOnly === true;
     const key = req.headers.get('idempotency-key');
-    if (!validUuid(body.listingId) || Object.keys(body).length !== 1 || !validUuid(key)) throw new MarketplaceError('Invalid request.');
+    if (!validUuid(body.listingId) || Object.keys(body).length !== (resumeOnly ? 2 : 1) || !validUuid(key)) throw new MarketplaceError('Invalid request.');
+    const buyer = resumeOnly ? buyerProof(req, deps) : requireBuyer(req, deps);
     await rate(req, deps, 'payment-checkout-ip');
-    const order = await deps.store.reserve({ listingId: body.listingId, tenant: deps.context.tenant, buyerAccessHash: buyer.accessHash, submissionKey: key, now: deps.now() });
+    if (!buyer) throw new MarketplaceError('Item unavailable.', 409);
+    const identity = { listingId: body.listingId, tenant: deps.context.tenant, buyerAccessHash: buyer.accessHash, submissionKey: key };
+    // A reserved page can outlive its hold. A resume click never creates a reservation.
+    const order = resumeOnly ? await deps.store.findCheckoutReservation(identity) : await deps.store.reserve({ ...identity, now: deps.now() });
+    if (!order) throw new MarketplaceError('Item unavailable.', 409);
     return jsonResponse(await ensureCheckout(order, deps), 201);
   } catch (error) { return checkoutError(error); }
 }

@@ -50,6 +50,7 @@ export type PaymentDeps = {
   store: PaymentStore; mailer: SellerMailer; stripe: StripeGateway; context: PaymentContext; secret: string;
   now: () => Date; randomBytes: (size: number) => Buffer;
 };
+type CheckoutReservation = { listingId: string; buyerAccessHash: string; submissionKey: string; tenant: string };
 export interface PaymentStore {
   getPublicPaymentStates(listingIds: string[], context: PaymentContext): Promise<Record<string, PublicPaymentState>>;
   findListingPaymentAccount(listingId: string, context: PaymentContext): Promise<SellerAccount | null>;
@@ -68,7 +69,8 @@ export interface PaymentStore {
   acquireAccountRefresh(accountId: string, tenant: string, leaseId: string): Promise<boolean>;
   saveAccountReadiness(accountId: string, tenant: string, leaseId: string, readiness: Pick<AccountReadiness, 'ready' | 'connection'>, checkedAt: string): Promise<boolean>;
   findSellerConnection(sellerId: string, tenant: string): Promise<'pending' | 'ready' | 'restricted' | null>;
-  reserve(input: { listingId: string; buyerAccessHash: string; submissionKey: string; tenant: string; now: Date }): Promise<StoredOrder>;
+  reserve(input: CheckoutReservation & { now: Date }): Promise<StoredOrder>;
+  findCheckoutReservation(input: CheckoutReservation): Promise<StoredOrder | null>;
   prepareCheckout(input: { orderId: string; tenant: string; params: Record<string, unknown>; apiVersion: string }): Promise<PreparedOrder>;
   attachSession(orderId: string, tenant: string, canonical: CanonicalCheckout): Promise<StoredOrder>;
   findOrder(orderId: string, tenant: string): Promise<StoredOrder | null>;

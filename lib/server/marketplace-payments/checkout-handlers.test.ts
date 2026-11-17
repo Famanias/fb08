@@ -4,6 +4,7 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import type { CanonicalCheckout, PaymentDeps, PaymentStore, PreparedOrder, StoredOrder } from './contracts';
 import { handleBuyerSession, handleCheckout, requireBuyer } from './checkout-handlers';
 import { MarketplaceError } from '../../../features/marketplace/validation';
+import { readCheckoutKey, submitCheckout } from '../../../features/marketplace/payments/service';
 
 function fixture() {
   let now = new Date('2026-11-17T00:00:00Z'); let allowed = true; let ready = true; let loseCreate = false; let loseAttach = false;
@@ -20,9 +21,13 @@ function fixture() {
       calls.reserve++;
       const previous = orders.find(o => o.buyerAccessHash === input.buyerAccessHash && o.submissionKey === input.submissionKey);
       if (previous) { if (previous.listingId !== input.listingId) throw new MarketplaceError('Conflict', 409); return { ...previous }; }
-      if (orders.some(o => o.listingId === input.listingId)) throw new MarketplaceError('Conflict', 409);
+      if (orders.some(o => o.listingId === input.listingId && o.state !== 'expired')) throw new MarketplaceError('Conflict', 409);
       const id = randomUUID(); const order: StoredOrder = { id, tenant: 'local', listingId: input.listingId, sellerId: account.sellerId, accountId: account.accountId, buyerAccessHash: input.buyerAccessHash, readExpiresAt: new Date(+now + 604800000).toISOString(), submissionKey: input.submissionKey, state: 'preparing', title: 'Fictional item\u0000\n   safe title', grossMinor: 123450, feeMinor: 12345, currency: 'php', livemode: false, sessionId: null, paymentIntentId: null, createKey: `local:checkout:${id}:v1`, checkoutExpiresAt: Math.floor(+now / 1000) + 1860, preparedAt: now.toISOString(), stripeApiVersion: null, createParams: null };
       orders.push(order); return { ...order };
+    },
+    async findCheckoutReservation(input) {
+      const order = orders.find(o => o.listingId === input.listingId && o.tenant === input.tenant && o.buyerAccessHash === input.buyerAccessHash && o.submissionKey === input.submissionKey);
+      return order ? { ...order } : null;
     },
     async prepareCheckout(input) { calls.prepare++; const o = orders.find(o => o.id === input.orderId)!; o.createParams ??= structuredClone(input.params); o.stripeApiVersion ??= input.apiVersion; return { ...o } as PreparedOrder; },
     async attachSession(id, _tenant, c) { const o = orders.find(o => o.id === id)!; o.sessionId = c.sessionId; o.state = 'open'; if (loseAttach) { loseAttach = false; throw new Error('DB committed, response lost'); } return { ...o }; },
@@ -98,8 +103,100 @@ test('same submission cannot buy another listing and declined/canceled attempts 
   const f = fixture(); await handleCheckout(f.req(), f.deps);
   assert.equal((await handleCheckout(f.req({ listingId: randomUUID() }), f.deps)).status, 409);
   assert.equal((await handleCheckout(f.req(), f.deps)).status, 201); assert.equal(f.calls.creates.length, 1); assert.equal(f.orders[0].state, 'open');
-  for (const state of ['paid', 'expired', 'review'] as const) { f.orders[0].state = state; const res = await handleCheckout(f.req(), f.deps); assert.equal(res.status, 201); assert.deepEqual(await res.json(), { orderId: f.orders[0].id, url: `https://market.example.invalid/marketplace/orders/${f.orders[0].id}` }); }
+  for (const state of ['paid', 'expired', 'review'] as const) { f.orders[0].state = state; const res = await handleCheckout(f.req(), f.deps); assert.equal(res.status, 201); assert.deepEqual(await res.json(), { orderId: f.orders[0].id, url: `https://market.example.invalid/marketplace/orders/${f.orders[0].id}`, ...(state === 'expired' ? { expired: true } : {}) }); }
   assert.equal(f.calls.creates.length, 1);
+});
+
+test('resume requires a matching buyer, listing and key even when a fresh reservation would be possible', async () => {
+  const f = fixture();
+  const body = { listingId: f.listingId, resumeOnly: true };
+  const missing = await handleCheckout(f.req(body), f.deps);
+  assert.equal(missing.status, 409);
+  assert.equal(f.calls.reserve, 0);
+  assert.equal(f.orders.length, 0);
+  const conflict = await missing.json();
+  assert.equal((await handleCheckout(f.req(), f.deps)).status, 201);
+
+  for (const request of [
+    f.req(body, { cookie: '' }),
+    f.req(body, { cookie: `__Host-fb08_mp_buyer=${Buffer.alloc(32, 2).toString('base64url')}` }),
+    f.req(body, { 'idempotency-key': randomUUID() }),
+    f.req({ ...body, listingId: randomUUID() }),
+  ]) {
+    const denied = await handleCheckout(request, f.deps);
+    assert.equal(denied.status, 409);
+    assert.deepEqual(await denied.json(), conflict);
+  }
+  assert.equal(f.calls.reads, 1);
+  const owner = await handleCheckout(f.req(body), f.deps);
+  assert.equal(owner.status, 201);
+  assert.deepEqual(await owner.json(), { orderId: f.orders[0].id, url: 'https://checkout.stripe.com/c/pay/fixture' });
+  assert.equal(f.calls.reserve, 1);
+  assert.equal(f.calls.creates.length, 1);
+  assert.equal(f.calls.rates.length, 7);
+});
+
+test('same-tab Checkout keeps only its submission UUID across lost response, reload and cancel until persisted expiry', async t => {
+  const f = fixture();
+  const entries = new Map<string, string>();
+  const sessionStorage = () => ({ getItem: (name: string) => entries.get(name) ?? null, setItem: (name: string, value: string) => entries.set(name, value), removeItem: (name: string) => entries.delete(name) });
+  let cookie = '';
+  let bootstrapCalls = 0;
+  let loseResponse = true;
+  t.mock.method(globalThis, 'fetch', async (path: string, init: RequestInit) => {
+    const headers = new Headers(init.headers);
+    assert.equal(init.credentials, 'same-origin');
+    assert.equal(headers.has('cookie'), false);
+    headers.set('origin', f.deps.context.origin);
+    headers.set('sec-fetch-site', 'same-origin');
+    headers.set('cookie', cookie);
+    const request = new Request(`${f.deps.context.origin}${path}`, { ...init, headers });
+    if (path.endsWith('/buyer-session')) {
+      bootstrapCalls++;
+      const response = await handleBuyerSession(request, f.deps);
+      const issued = response.headers.get('set-cookie')!;
+      assert.match(issued, /; HttpOnly;/);
+      cookie = issued.split(';')[0];
+      return response;
+    }
+    const response = await handleCheckout(request, f.deps);
+    if (loseResponse) { loseResponse = false; throw new TypeError('Lost response'); }
+    return response;
+  });
+
+  assert.equal(await submitCheckout(sessionStorage(), f.listingId, 'reserved'), null);
+  assert.equal(bootstrapCalls, 0);
+  await assert.rejects(submitCheckout(sessionStorage(), f.listingId, 'ready'), /Lost response/);
+  const first = f.orders[0];
+  const retained = readCheckoutKey(sessionStorage(), f.listingId);
+  assert.equal(retained, first.submissionKey);
+  assert.match(retained!, /^[\da-f-]{36}$/);
+  assert.deepEqual([...entries.values()], [retained]);
+  assert.equal(readCheckoutKey(sessionStorage(), randomUUID()), null);
+  const existing = { orderId: first.id, url: 'https://checkout.stripe.com/c/pay/fixture' };
+  assert.deepEqual(await submitCheckout(sessionStorage(), f.listingId, 'reserved'), existing);
+  assert.deepEqual(await submitCheckout(sessionStorage(), f.listingId, 'reserved'), existing);
+  assert.equal(bootstrapCalls, 1);
+  assert.equal(f.calls.creates.length, 1);
+
+  const originalRead = f.deps.stripe.readCheckout;
+  f.deps.stripe.readCheckout = async (...args) => ({ ...await originalRead(...args), status: 'expired', url: null });
+  const pending = await submitCheckout(sessionStorage(), f.listingId, 'reserved');
+  assert.equal(pending?.expired, undefined);
+  assert.equal(readCheckoutKey(sessionStorage(), f.listingId), retained);
+
+  first.state = 'expired';
+  assert.equal((await submitCheckout(sessionStorage(), f.listingId, 'reserved'))?.expired, true);
+  assert.equal(readCheckoutKey(sessionStorage(), f.listingId), null);
+  assert.equal(f.orders.length, 1);
+  assert.equal(f.calls.creates.length, 1);
+
+  f.deps.stripe.readCheckout = originalRead;
+  assert.equal(await submitCheckout(sessionStorage(), f.listingId, 'reserved'), null);
+  await submitCheckout(sessionStorage(), f.listingId, 'ready');
+  assert.equal(f.orders.length, 2);
+  assert.notEqual(f.orders[1].submissionKey, retained);
+  assert.equal(readCheckoutKey(sessionStorage(), f.listingId), f.orders[1].submissionKey);
 });
 
 test('unsafe hosted URL never reaches browser and disabled new creation reserves nothing', async () => {

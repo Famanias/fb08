@@ -17,19 +17,31 @@ export async function reconcileMarketplacePayments(deps: PaymentDeps, apply = fa
     const age = +deps.now() - Date.parse(order.preparedAt);
     let action = order.state === 'paid' ? 'inspect-fee-details' : order.sessionId ? 'inspect-session' : order.state === 'preparing' && order.createParams && order.stripeApiVersion && age >= 0 && age < 23 * 3600000 && order.checkoutExpiresAt - +deps.now() / 1000 >= 1800 ? 'retry-original-operation' : 'frozen-review-evidence';
     if (apply) {
-      if (order.state === 'paid') {
-        const settlement = await deps.stripe.readSettlement(order);
-        if (settlement) await deps.store.saveSettlement(order.id, order.tenant, settlement);
-        action = settlement ? 'fee-details-saved' : 'fee-details-pending';
-      } else action = await reconcileOrder(order, deps);
+      try {
+        if (order.state === 'paid') {
+          const settlement = await deps.stripe.readSettlement(order);
+          if (settlement) await deps.store.saveSettlement(order.id, order.tenant, settlement);
+          action = settlement ? 'fee-details-saved' : 'fee-details-pending';
+        } else action = await reconcileOrder(order, deps);
+      } catch {
+        // Preserve persisted state for retry and omit provider and database error details.
+        action = 'failed';
+      }
     }
     results.push({ orderId: order.id, state, action });
   }
   return results;
 }
+
+export async function runReconciliation(deps: PaymentDeps, apply: boolean, write = console.log): Promise<number> {
+  const results = await reconcileMarketplacePayments(deps, apply);
+  write(JSON.stringify(results));
+  return results.some(result => result.action === 'failed') ? 1 : 0;
+}
+
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   Promise.resolve().then(() => {
     const { apply } = parseReconcileArgs(process.argv.slice(2));
-    return reconcileMarketplacePayments(createPaymentDeps(), apply);
-  }).then(result => console.log(JSON.stringify(result))).catch(() => { console.error('Payment reconciliation stopped. Review owned orders and retry; no replacement key or timer release is permitted.'); process.exitCode = 1; });
+    return runReconciliation(createPaymentDeps(), apply);
+  }).then(code => { process.exitCode = code; }).catch(() => { console.error('Payment reconciliation stopped. Review owned orders and retry; no replacement key or timer release is permitted.'); process.exitCode = 1; });
 }

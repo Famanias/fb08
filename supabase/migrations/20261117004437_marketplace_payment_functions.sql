@@ -53,8 +53,7 @@ begin
 end $$;
 revoke all on function public.marketplace_ensure_account_slot(text,uuid),public.marketplace_save_account(text,uuid,text,text),public.marketplace_acquire_account_refresh(text,text,text),public.marketplace_save_account_readiness(text,text,text,boolean,text,timestamptz) from public,anon,authenticated;
 grant execute on function public.marketplace_ensure_account_slot(text,uuid),public.marketplace_save_account(text,uuid,text,text),public.marketplace_acquire_account_refresh(text,text,text),public.marketplace_save_account_readiness(text,text,text,boolean,text,timestamptz) to service_role;
-commit;
-begin;
+
 -- Service-only ownership proofs. These functions never accept plaintext codes.
 create function public.marketplace_proof_hashes_equal(p_left text,p_right text)
 returns boolean language plpgsql security invoker set search_path='' as $$
@@ -281,8 +280,7 @@ end $$;
 
 revoke all on function public.marketplace_reserve_order(text,uuid,text,uuid,timestamptz),public.marketplace_prepare_checkout(text,uuid,jsonb,text),public.marketplace_attach_checkout(text,uuid,jsonb),public.marketplace_apply_checkout(text,uuid,text,text,jsonb,timestamptz),public.marketplace_checkout_matches(public.marketplace_orders,jsonb),public.marketplace_classify_demo_inventory(jsonb) from public,anon,authenticated;
 grant execute on function public.marketplace_reserve_order(text,uuid,text,uuid,timestamptz),public.marketplace_prepare_checkout(text,uuid,jsonb,text),public.marketplace_attach_checkout(text,uuid,jsonb),public.marketplace_apply_checkout(text,uuid,text,text,jsonb,timestamptz),public.marketplace_checkout_matches(public.marketplace_orders,jsonb),public.marketplace_classify_demo_inventory(jsonb) to service_role;
-commit;
-begin;
+
 -- Parameterized substring search avoids PostgREST wildcard/filter grammar entirely.
 -- This invoker function returns only active public listing data and obeys RLS.
 create or replace function public.marketplace_browse(p_q text default '', p_category text default 'All', p_sort text default 'newest', p_page integer default 0)
