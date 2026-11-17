@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "test": "tsx --test lib/server/auth.test.ts lib/server/board-routes.test.ts lib/server/profile-routes.test.ts features/board/board-rules.test.ts features/board/board-service.test.ts features/profile/profile-rules.test.ts features/marketplace/validation.test.ts lib/server/marketplace-image.test.ts lib/server/marketplace-handlers.test.ts features/marketplace/payments/rules.test.ts scripts/classify-marketplace-demos.test.ts lib/server/marketplace-payments/store.test.ts",
+    "test": "tsx --test lib/server/auth.test.ts lib/server/board-routes.test.ts lib/server/profile-routes.test.ts features/board/board-rules.test.ts features/board/board-service.test.ts features/profile/profile-rules.test.ts features/marketplace/validation.test.ts lib/server/marketplace-image.test.ts lib/server/marketplace-handlers.test.ts features/marketplace/payments/rules.test.ts scripts/classify-marketplace-demos.test.ts lib/server/marketplace-payments/store.test.ts lib/server/marketplace-payments/proof.test.ts lib/server/marketplace-payments/seller-handlers.test.ts lib/server/marketplace-payments/seller-mailer.test.ts",
     "clean": "next clean",
     "typecheck": "tsc --noEmit",
     "test:marketplace:live": "node --env-file=.env.local --import=tsx scripts/verify-marketplace.ts",

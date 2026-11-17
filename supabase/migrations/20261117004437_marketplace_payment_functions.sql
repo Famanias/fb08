@@ -1,4 +1,49 @@
 begin;
+-- Service-only ownership proofs. These functions never accept plaintext codes.
+create function public.marketplace_proof_hashes_equal(p_left text,p_right text)
+returns boolean language plpgsql security invoker set search_path='' as $$
+declare a bytea; b bytea; difference integer:=0; i integer;
+begin
+  if p_left is null or p_right is null or p_left !~ '^[a-f0-9]{64}$' or p_right !~ '^[a-f0-9]{64}$' then return false; end if;
+  a:=decode(p_left,'hex'); b:=decode(p_right,'hex');
+  -- Fixed-size HMAC values: inspect every byte without early exit.
+  for i in 0..31 loop difference:=difference | (get_byte(a,i) # get_byte(b,i)); end loop;
+  return difference=0;
+end $$;
+create function public.marketplace_issue_seller_challenge(p_id uuid,p_email text,p_tenant text,p_browser_hash text,p_code_hash text,p_expires_at timestamptz)
+returns void language plpgsql security invoker set search_path='' as $$
+begin
+  if p_id is null or p_email is null or p_email<>lower(btrim(p_email)) or char_length(p_email) not between 3 and 254
+    or p_tenant is null or char_length(p_tenant) not between 1 and 100 or p_browser_hash is null or p_browser_hash !~ '^[a-f0-9]{64}$'
+    or p_code_hash is null or p_code_hash !~ '^[a-f0-9]{64}$' or p_expires_at is null then raise exception 'invalid_challenge'; end if;
+  -- Serialize replacement even when no earlier row exists.
+  perform pg_advisory_xact_lock(hashtextextended(jsonb_build_array(p_tenant,p_email,p_browser_hash)::text,0));
+  update public.marketplace_seller_challenges set consumed_at=clock_timestamp()
+    where tenant=p_tenant and email_normalized=p_email and browser_nonce_hash=p_browser_hash and consumed_at is null;
+  insert into public.marketplace_seller_challenges(id,tenant,email_normalized,browser_nonce_hash,code_hash,expires_at)
+    values(p_id,p_tenant,p_email,p_browser_hash,p_code_hash,p_expires_at);
+end $$;
+create function public.marketplace_consume_seller_challenge(p_id uuid,p_tenant text,p_browser_hash text,p_candidate_hash text,p_session_hash text,p_now timestamptz)
+returns jsonb language plpgsql security invoker set search_path='' as $$
+declare c public.marketplace_seller_challenges; s public.marketplace_payment_sellers;
+begin
+  if p_id is null or p_tenant is null or p_now is null or p_browser_hash is null or p_browser_hash !~ '^[a-f0-9]{64}$'
+    or p_candidate_hash is null or p_candidate_hash !~ '^[a-f0-9]{64}$' or p_session_hash is null or p_session_hash !~ '^[a-f0-9]{64}$' then return null; end if;
+  select * into c from public.marketplace_seller_challenges where id=p_id and tenant=p_tenant and browser_nonce_hash=p_browser_hash for update;
+  if not found or c.consumed_at is not null or c.expires_at<=p_now or c.attempts>=5 then return null; end if;
+  if not public.marketplace_proof_hashes_equal(c.code_hash,p_candidate_hash) then
+    update public.marketplace_seller_challenges set attempts=attempts+1 where id=c.id;
+    return null;
+  end if;
+  update public.marketplace_seller_challenges set consumed_at=p_now where id=c.id;
+  insert into public.marketplace_payment_sellers(tenant,email_normalized,verified_at) values(p_tenant,c.email_normalized,p_now)
+    on conflict(tenant,email_normalized) do update set verified_at=excluded.verified_at returning * into s;
+  insert into public.marketplace_seller_sessions(token_hash,tenant,seller_id,expires_at) values(p_session_hash,p_tenant,s.id,p_now+interval '1 hour');
+  return jsonb_build_object('id',s.id,'tenant',s.tenant,'email_normalized',s.email_normalized);
+end $$;
+revoke all on function public.marketplace_proof_hashes_equal(text,text),public.marketplace_issue_seller_challenge(uuid,text,text,text,text,timestamptz),public.marketplace_consume_seller_challenge(uuid,text,text,text,text,timestamptz) from public,anon,authenticated;
+grant execute on function public.marketplace_proof_hashes_equal(text,text),public.marketplace_issue_seller_challenge(uuid,text,text,text,text,timestamptz),public.marketplace_consume_seller_challenge(uuid,text,text,text,text,timestamptz) to service_role;
+
 create function public.marketplace_reserve_order(p_tenant text,p_listing_id uuid,p_buyer_hash text,p_key uuid,p_now timestamptz)
 returns jsonb language plpgsql security invoker set search_path='' as $$
 declare l public.marketplace_listings; o public.marketplace_orders; s public.marketplace_payment_sellers; a public.marketplace_connected_accounts; oid uuid; gross bigint;

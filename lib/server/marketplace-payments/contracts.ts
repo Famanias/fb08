@@ -27,9 +27,24 @@ export type CanonicalCheckout = {
   metadata: Record<string, string>; intentMetadata: Record<string, string>;
 };
 export type Settlement = { currency: string; grossMinor: number; applicationFeeMinor: number; stripeFeeMinor: number; otherFeeMinor: number; netMinor: number };
+export type SellerChallenge = { id: string; emailNormalized: string; browserHash: string; expiresAt: string };
+export interface SellerMailer {
+  sendCode(input: { to: string; code: string; expiresMinutes: 10; challengeId: string }): Promise<void>;
+}
+export type PaymentDeps = {
+  store: PaymentStore; mailer: SellerMailer; context: PaymentContext; secret: string;
+  now: () => Date; randomBytes: (size: number) => Buffer;
+};
 export interface PaymentStore {
   consumeRate(actor: string, action: string, limit: number): Promise<boolean>;
   findSeller(emailNormalized: string, tenant: string): Promise<SellerIdentity | null>;
+  issueChallenge(input: { id: string; emailNormalized: string; tenant: string; browserHash: string; codeHash: string; expiresAt: string }): Promise<void>;
+  findChallenge(id: string, tenant: string, browserHash: string, now: Date): Promise<SellerChallenge | null>;
+  consumeChallenge(input: { id: string; tenant: string; browserHash: string; candidateHash: string; sessionHash: string; now: Date }): Promise<SellerIdentity | null>;
+  findSellerSession(sessionHash: string, tenant: string, now: Date): Promise<SellerIdentity | null>;
+  revokeSellerSession(sessionHash: string, tenant: string): Promise<void>;
+  findSellerAccount(sellerId: string, tenant: string): Promise<SellerAccount | null>;
+  findSellerConnection(sellerId: string, tenant: string): Promise<'pending' | 'ready' | 'restricted' | null>;
   reserve(input: { listingId: string; buyerAccessHash: string; submissionKey: string; tenant: string; now: Date }): Promise<StoredOrder>;
   prepareCheckout(input: { orderId: string; tenant: string; params: Record<string, unknown>; apiVersion: string }): Promise<PreparedOrder>;
   attachSession(orderId: string, tenant: string, canonical: CanonicalCheckout): Promise<StoredOrder>;
