@@ -15,7 +15,7 @@ function fixture() {
   let account: SellerAccount | null = null;
   let pendingMapping = false;
   const unused = async (): Promise<never> => { throw new Error('Unexpected store operation'); };
-  const store: PaymentStore = {
+  const store: PaymentStore = { getPublicPaymentStates: unused, findListingPaymentAccount: unused, getOrderConfirmation: unused,
     reserve: unused, prepareCheckout: unused, attachSession: unused, findOrder: unused, applyCheckout: unused, saveSettlement: unused, findInventory: unused, findPaidWebhookReceipt: unused, listReconciliationOrders: unused,
     ensureSellerAccountSlot: unused, saveSellerAccount: unused, findAccountById: unused, acquireAccountRefresh: unused, saveAccountReadiness: unused,
     async findSeller(email, tenant) { return sellers.get(`${tenant}:${email}`) ?? null; },

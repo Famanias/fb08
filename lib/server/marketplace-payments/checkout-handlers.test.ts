@@ -12,7 +12,7 @@ function fixture() {
   const unused = async (): Promise<never> => { throw new Error('Unexpected operation'); };
   const account = { sellerId: randomUUID(), accountId: 'acct_fixture', ready: true, connection: 'ready' as const, checkedAt: now.toISOString(), accountCreateKey: 'account-key' };
   const canonical = (o: StoredOrder): CanonicalCheckout => ({ sessionId: 'cs_test_fixture', accountId: o.accountId, paymentIntentId: null, status: 'open', paymentStatus: 'unpaid', intentStatus: null, livemode: false, currency: 'php', grossMinor: 123450, feeMinor: null, quantity: 1, intentAmountReceivedMinor: null, intentCurrency: null, url: 'https://checkout.stripe.com/c/pay/fixture', expiresAt: o.checkoutExpiresAt, clientReferenceId: o.id, metadata: { fb08_app: 'marketplace-payments-v1', tenant: 'local', order_id: o.id, listing_id: o.listingId }, intentMetadata: {} });
-  const store: PaymentStore = {
+  const store: PaymentStore = { getPublicPaymentStates: unused, findListingPaymentAccount: unused, getOrderConfirmation: unused,
     findSeller: unused, issueChallenge: unused, findChallenge: unused, consumeChallenge: unused, findSellerSession: unused, revokeSellerSession: unused, ensureSellerAccountSlot: unused, saveSellerAccount: unused, findSellerConnection: unused, applyCheckout: unused, saveSettlement: unused, findInventory: unused, findPaidWebhookReceipt: unused, listReconciliationOrders: unused,
     async consumeRate(actor, action, limit) { calls.rates.push({ actor, action, limit }); return allowed; },
     async findSellerAccount() { return account; }, async findAccountById() { return account; }, async acquireAccountRefresh() { return true; }, async saveAccountReadiness(_id, _tenant, _lease, value) { Object.assign(account, value); return true; },

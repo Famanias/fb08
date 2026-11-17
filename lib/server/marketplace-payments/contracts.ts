@@ -1,4 +1,5 @@
 // Private server contracts. Never import these from client components.
+import type { OrderConfirmation, PublicPaymentState } from '../../../features/marketplace/payments/types';
 export type PaymentContext = { tenant: string; origin: string; enabled: boolean };
 export type OrderState = 'preparing' | 'open' | 'paid' | 'expired' | 'review';
 export type SellerIdentity = { id: string; emailNormalized: string; tenant: string };
@@ -50,6 +51,9 @@ export type PaymentDeps = {
   now: () => Date; randomBytes: (size: number) => Buffer;
 };
 export interface PaymentStore {
+  getPublicPaymentStates(listingIds: string[], context: PaymentContext): Promise<Record<string, PublicPaymentState>>;
+  findListingPaymentAccount(listingId: string, context: PaymentContext): Promise<SellerAccount | null>;
+  getOrderConfirmation(orderId: string, buyerHash: string, tenant: string, now: Date): Promise<OrderConfirmation | null>;
   consumeRate(actor: string, action: string, limit: number): Promise<boolean>;
   findSeller(emailNormalized: string, tenant: string): Promise<SellerIdentity | null>;
   issueChallenge(input: { id: string; emailNormalized: string; tenant: string; browserHash: string; codeHash: string; expiresAt: string }): Promise<void>;

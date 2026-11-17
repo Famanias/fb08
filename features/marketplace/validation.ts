@@ -40,5 +40,5 @@ export function parseFilters(params: URLSearchParams): ListingFilters {
   return { q, category: category as ListingFilters['category'], sort: sort as ListingFilters['sort'], page: Number(pageValue) };
 }
 export function publicListing(row: Record<string, unknown>, imageUrl: string): PublicListing {
-  return { id: String(row.id), title: String(row.title), description: String(row.description), price: Number(row.price), currency: 'PHP', category: row.category as MarketplaceCategory, sellerDisplayName: String(row.seller_display_name), imageUrl, createdAt: String(row.created_at), status: row.status as PublicListing['status'], inventoryKind: (row.inventory_kind ?? 'ordinary') as PublicListing['inventoryKind'] };
+  return { id: String(row.id), title: String(row.title), description: String(row.description), price: Number(row.price), currency: 'PHP', category: row.category as MarketplaceCategory, sellerDisplayName: String(row.seller_display_name), imageUrl, createdAt: String(row.created_at), status: row.status as PublicListing['status'], inventoryKind: (row.inventory_kind ?? 'ordinary') as PublicListing['inventoryKind'], paymentState: { sandbox: row.inventory_kind === 'sandbox', availability: row.status === 'sold' ? 'sold' : 'unavailable' } };
 }

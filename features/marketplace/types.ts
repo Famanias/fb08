@@ -8,6 +8,7 @@ export type PublicListing = {
   id: string; title: string; description: string; price: number; currency: 'PHP';
   category: MarketplaceCategory; sellerDisplayName: string; imageUrl: string;
   createdAt: string; status: 'active' | 'sold'; inventoryKind: 'ordinary' | 'demo' | 'sandbox';
+  paymentState?: import('./payments/types').PublicPaymentState;
 };
 export type ListingPage = { listings: PublicListing[]; total: number; hasMore: boolean };
 export type CreateListingInput = { title: string; description: string; price: string; category: MarketplaceCategory; sellerDisplayName: string; sellerEmail: string; inventoryKind: 'ordinary' | 'sandbox' };

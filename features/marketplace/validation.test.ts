@@ -28,7 +28,7 @@ test('filters reject query injection and unbounded pagination', () => {
 });
 test('public DTO explicitly omits private and unexpected database columns', () => {
   const dto = publicListing({ id: 'id', title: 'Title', description: 'Desc', price: '12.50', currency: 'PHP', category: 'Home', seller_display_name: 'Guest', image_path: 'path', status: 'active', created_at: 'date', seller_email: 'secret@example.com', buyer_email: 'buyer@example.com', message: 'private' }, 'https://example.com/photo');
-  assert.deepEqual(Object.keys(dto).sort(), ['id', 'title', 'description', 'price', 'currency', 'category', 'sellerDisplayName', 'imageUrl', 'createdAt', 'status', 'inventoryKind'].sort());
+  assert.deepEqual(Object.keys(dto).sort(), ['id', 'title', 'description', 'price', 'currency', 'category', 'sellerDisplayName', 'imageUrl', 'createdAt', 'status', 'inventoryKind', 'paymentState'].sort());
   assert.equal(dto.price, 12.5);
   assert.ok(!JSON.stringify(dto).includes('secret'));
 });

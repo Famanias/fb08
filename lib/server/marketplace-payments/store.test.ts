@@ -71,6 +71,27 @@ test('cached seller connection includes pending mappings without a provider ID',
   assert.equal(query.searchParams.get('seller_id'), 'eq.seller'); assert.equal(query.searchParams.get('tenant'), 'eq.local');
   assert.equal(query.searchParams.get('select'), 'connection'); assert.equal(query.searchParams.get('account_id'), null);
 });
+
+test('public batch availability strips all private refresh fields without any provider dependency', async () => {
+  const calls: Array<{ url: URL; body: Record<string, unknown> }> = [];
+  const db = createClient('http://127.0.0.1:54321', 'local-only', { global: { fetch: async (input, init) => {
+    calls.push({ url: new URL(String(input)), body: JSON.parse(String(init?.body)) });
+    return Response.json([{ listing_id: 'one', sandbox: true, availability: 'ready', account_id: 'acct_private', seller_id: 'private', email: 'private@example.invalid', refreshable: true }]);
+  } } });
+  assert.deepEqual(await createPaymentStore(db).getPublicPaymentStates(['one', 'two'], { tenant: 'local', origin: 'http://localhost', enabled: true }), { one: { sandbox: true, availability: 'ready' } });
+  assert.equal(calls.length, 1); assert.deepEqual(calls[0].body, { p_listing_ids: ['one', 'two'], p_tenant: 'local', p_enabled: true });
+});
+
+test('confirmation adapter binds all read predicates and reconstructs only approved DTO fields', async () => {
+  let body: Record<string, unknown> = {};
+  const db = createClient('http://127.0.0.1:54321', 'local-only', { global: { fetch: async (_input, init) => {
+    body = JSON.parse(String(init?.body)); return Response.json({ orderId: 'order', listingId: 'listing', title: 'Fictional', status: 'review', grossMinor: 123450, applicationFeeMinor: 12345, sellerBeforeProcessingMinor: 111105, accountId: 'acct_private', buyerAccessHash: 'private', sellerEmail: 'private@example.invalid' });
+  } } });
+  const dto = await createPaymentStore(db).getOrderConfirmation('order', 'hash', 'local', new Date('2026-11-17T00:00:00Z'));
+  assert.deepEqual(body, { p_order_id: 'order', p_buyer_hash: 'hash', p_tenant: 'local', p_now: '2026-11-17T00:00:00.000Z' });
+  assert.deepEqual(Object.keys(dto!).sort(), ['orderId', 'listingId', 'title', 'status', 'currency', 'grossMinor', 'applicationFeeMinor', 'sellerBeforeProcessingMinor', 'sandbox'].sort());
+  assert.doesNotMatch(JSON.stringify(dto), /acct_private|AccessHash|sellerEmail|private@/);
+});
 test('reconciliation includes unenriched paid orders and paginates tenant-scoped work', async () => {
   let query = new URL('http://localhost');
   const db = createClient('http://127.0.0.1:54321', 'test-only', { global: { fetch: async input => {

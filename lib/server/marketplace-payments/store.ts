@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { getSupabaseAdminClient } from '../supabase-admin';
 import { MarketplaceError } from '../../../features/marketplace/validation';
 import type { PaymentStore, PreparedOrder, StoredOrder, SellerAccount } from './contracts';
+import type { OrderConfirmation, PublicPaymentState } from '../../../features/marketplace/payments/types';
 
 function sellerAccount(row: Record<string, unknown>): SellerAccount {
   return { sellerId: String(row.seller_id), accountId: String(row.account_id), ready: row.ready === true, connection: row.connection as SellerAccount['connection'], checkedAt: typeof row.checked_at === 'string' ? row.checked_at : '', accountCreateKey: String(row.account_create_key) };
@@ -35,6 +36,29 @@ export function createPaymentStore(db: SupabaseClient = getSupabaseAdminClient()
     const { data, error } = await db.rpc(name, args); checked(error); return data;
   }
   return {
+    async getPublicPaymentStates(listingIds, context) {
+      if (!listingIds.length) return {};
+      const rows = await rpc('marketplace_payment_display', { p_listing_ids: listingIds, p_tenant: context.tenant, p_enabled: context.enabled });
+      const result: Record<string, PublicPaymentState> = {};
+      for (const row of rows ?? []) {
+        if (!listingIds.includes(row.listing_id) || !['unavailable', 'ready', 'reserved', 'sold'].includes(row.availability)) continue;
+        result[row.listing_id] = { sandbox: row.sandbox === true, availability: row.availability };
+      }
+      return result;
+    },
+    async findListingPaymentAccount(listingId, context) {
+      if (!context.enabled) return null;
+      const rows = await rpc('marketplace_payment_display', { p_listing_ids: [listingId], p_tenant: context.tenant, p_enabled: context.enabled });
+      const row = rows?.find((item: Record<string, unknown>) => item.listing_id === listingId);
+      return row?.refreshable === true && typeof row.account_id === 'string' && typeof row.seller_id === 'string' ? sellerAccount(row) : null;
+    },
+    async getOrderConfirmation(orderId, buyerHash, tenant, now) {
+      const row = await rpc('marketplace_order_confirmation', { p_order_id: orderId, p_buyer_hash: buyerHash, p_tenant: tenant, p_now: now.toISOString() });
+      if (!row) return null;
+      if (!['pending', 'paid', 'expired', 'review'].includes(row.status)) throw new MarketplaceError('Order unavailable.', 503);
+      // Reconstruct the explicit public DTO; never spread database/provider records into client props.
+      return { orderId: String(row.orderId), listingId: String(row.listingId), title: String(row.title), status: row.status as OrderConfirmation['status'], currency: 'PHP', grossMinor: integer(row.grossMinor), applicationFeeMinor: integer(row.applicationFeeMinor), sellerBeforeProcessingMinor: integer(row.sellerBeforeProcessingMinor), sandbox: true };
+    },
     async consumeRate(actor, action, limit) { return await rpc('marketplace_consume_rate', { p_actor: actor, p_action: action, p_limit: limit }) === true; },
     async findSeller(emailNormalized, tenant) {
       const { data, error } = await db.from('marketplace_payment_sellers').select('id,email_normalized,tenant').eq('tenant', tenant).eq('email_normalized', emailNormalized).maybeSingle(); checked(error);
