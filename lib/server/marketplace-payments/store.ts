@@ -1,7 +1,11 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { getSupabaseAdminClient } from '../supabase-admin';
 import { MarketplaceError } from '../../../features/marketplace/validation';
-import type { PaymentStore, PreparedOrder, StoredOrder } from './contracts';
+import type { PaymentStore, PreparedOrder, StoredOrder, SellerAccount } from './contracts';
+
+function sellerAccount(row: Record<string, unknown>): SellerAccount {
+  return { sellerId: String(row.seller_id), accountId: String(row.account_id), ready: row.ready === true, connection: row.connection as SellerAccount['connection'], checkedAt: typeof row.checked_at === 'string' ? row.checked_at : '', accountCreateKey: String(row.account_create_key) };
+}
 
 function checked(error: { message: string } | null) {
   if (!error) return;
@@ -58,8 +62,20 @@ export function createPaymentStore(db: SupabaseClient = getSupabaseAdminClient()
     },
     async findSellerAccount(sellerId, tenant) {
       const { data, error } = await db.from('marketplace_connected_accounts').select('seller_id,account_id,ready,connection,checked_at,account_create_key').eq('seller_id', sellerId).eq('tenant', tenant).not('account_id', 'is', null).maybeSingle(); checked(error);
-      return data ? { sellerId: data.seller_id, accountId: data.account_id, ready: data.ready, connection: data.connection, checkedAt: data.checked_at, accountCreateKey: data.account_create_key } : null;
+      return data ? sellerAccount(data) : null;
     },
+    async ensureSellerAccountSlot(sellerId, tenant) {
+      const row = await rpc('marketplace_ensure_account_slot', { p_tenant: tenant, p_seller_id: sellerId });
+      if (!row) throw new MarketplaceError('Payments temporarily unavailable.', 503);
+      return { sellerId: row.seller_id, accountId: row.account_id, accountCreateKey: row.account_create_key, preparedAt: row.prepared_at };
+    },
+    async saveSellerAccount(sellerId, tenant, accountId, createKey) { await rpc('marketplace_save_account', { p_tenant: tenant, p_seller_id: sellerId, p_account_id: accountId, p_create_key: createKey }); },
+    async findAccountById(accountId, tenant) {
+      const { data, error } = await db.from('marketplace_connected_accounts').select('seller_id,account_id,ready,connection,checked_at,account_create_key').eq('account_id', accountId).eq('tenant', tenant).maybeSingle(); checked(error);
+      return data ? sellerAccount(data) : null;
+    },
+    async acquireAccountRefresh(accountId, tenant, leaseId) { return await rpc('marketplace_acquire_account_refresh', { p_tenant: tenant, p_account_id: accountId, p_lease_id: leaseId }) === true; },
+    async saveAccountReadiness(accountId, tenant, leaseId, readiness, checkedAt) { return await rpc('marketplace_save_account_readiness', { p_tenant: tenant, p_account_id: accountId, p_lease_id: leaseId, p_ready: readiness.ready, p_connection: readiness.connection, p_checked_at: checkedAt }) === true; },
     async findSellerConnection(sellerId, tenant) {
       const { data, error } = await db.from('marketplace_connected_accounts').select('connection').eq('seller_id', sellerId).eq('tenant', tenant).maybeSingle(); checked(error);
       return data?.connection ?? null;

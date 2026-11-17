@@ -27,12 +27,26 @@ export type CanonicalCheckout = {
   metadata: Record<string, string>; intentMetadata: Record<string, string>;
 };
 export type Settlement = { currency: string; grossMinor: number; applicationFeeMinor: number; stripeFeeMinor: number; otherFeeMinor: number; netMinor: number };
+export type AccountReadiness = { accountId: string; ready: boolean; connection: 'pending' | 'ready' | 'restricted'; metadata: Record<string, string>; checkedAt: string };
+export type VerifiedPaymentEvent = { id: string; type: string; accountId: string | null; livemode: boolean; objectId: string; metadata: Record<string, string> };
+export interface StripeGateway {
+  ensureAccount(seller: SellerIdentity, createKey: string): Promise<{ accountId: string }>;
+  readAccount(accountId: string): Promise<AccountReadiness>;
+  onboardingLink(accountId: string, origin: string): Promise<{ url: string }>;
+  createCheckout(order: PreparedOrder): Promise<{ sessionId: string; url: string }>;
+  readCheckout(order: StoredOrder, sessionId?: string): Promise<CanonicalCheckout>;
+  expireCheckout(order: StoredOrder): Promise<CanonicalCheckout>;
+  readSettlement(order: StoredOrder): Promise<Settlement | null>;
+  verifyEvent(raw: Buffer, signature: string): VerifiedPaymentEvent;
+}
+// Later tasks implement Checkout/settlement/signature verification. No runtime stubs.
+export type OnboardingStripeGateway = Pick<StripeGateway, 'ensureAccount' | 'readAccount' | 'onboardingLink'>;
 export type SellerChallenge = { id: string; emailNormalized: string; browserHash: string; expiresAt: string };
 export interface SellerMailer {
   sendCode(input: { to: string; code: string; expiresMinutes: 10; challengeId: string }): Promise<void>;
 }
 export type PaymentDeps = {
-  store: PaymentStore; mailer: SellerMailer; context: PaymentContext; secret: string;
+  store: PaymentStore; mailer: SellerMailer; stripe: OnboardingStripeGateway; context: PaymentContext; secret: string;
   now: () => Date; randomBytes: (size: number) => Buffer;
 };
 export interface PaymentStore {
@@ -44,6 +58,11 @@ export interface PaymentStore {
   findSellerSession(sessionHash: string, tenant: string, now: Date): Promise<SellerIdentity | null>;
   revokeSellerSession(sessionHash: string, tenant: string): Promise<void>;
   findSellerAccount(sellerId: string, tenant: string): Promise<SellerAccount | null>;
+  ensureSellerAccountSlot(sellerId: string, tenant: string): Promise<PendingSellerAccount>;
+  saveSellerAccount(sellerId: string, tenant: string, accountId: string, createKey: string): Promise<void>;
+  findAccountById(accountId: string, tenant: string): Promise<SellerAccount | null>;
+  acquireAccountRefresh(accountId: string, tenant: string, leaseId: string): Promise<boolean>;
+  saveAccountReadiness(accountId: string, tenant: string, leaseId: string, readiness: Pick<AccountReadiness, 'ready' | 'connection'>, checkedAt: string): Promise<boolean>;
   findSellerConnection(sellerId: string, tenant: string): Promise<'pending' | 'ready' | 'restricted' | null>;
   reserve(input: { listingId: string; buyerAccessHash: string; submissionKey: string; tenant: string; now: Date }): Promise<StoredOrder>;
   prepareCheckout(input: { orderId: string; tenant: string; params: Record<string, unknown>; apiVersion: string }): Promise<PreparedOrder>;

@@ -1,4 +1,47 @@
 begin;
+-- Service-only account creation identity. Never hold this transaction across HTTP.
+create function public.marketplace_ensure_account_slot(p_tenant text,p_seller_id uuid)
+returns jsonb language plpgsql security invoker set search_path = '' as $$
+declare a public.marketplace_connected_accounts;
+begin
+  if not exists(select 1 from public.marketplace_payment_sellers where id=p_seller_id and tenant=p_tenant) then raise exception 'seller_unavailable'; end if;
+  insert into public.marketplace_connected_accounts(tenant,seller_id,account_create_key)
+    values(p_tenant,p_seller_id,p_tenant||':account:'||gen_random_uuid()::text||':v1')
+    on conflict(tenant,seller_id) do nothing;
+  select * into strict a from public.marketplace_connected_accounts where tenant=p_tenant and seller_id=p_seller_id;
+  return jsonb_build_object('seller_id',a.seller_id,'account_id',a.account_id,'account_create_key',a.account_create_key,'prepared_at',a.prepared_at);
+end $$;
+create function public.marketplace_save_account(p_tenant text,p_seller_id uuid,p_account_id text,p_create_key text)
+returns void language plpgsql security invoker set search_path = '' as $$
+declare a public.marketplace_connected_accounts;
+begin
+  if p_account_id is null or p_account_id !~ '^acct_[A-Za-z0-9]{1,100}$' then raise exception 'account_conflict'; end if;
+  select * into a from public.marketplace_connected_accounts where tenant=p_tenant and seller_id=p_seller_id for update;
+  if not found or p_create_key is null or a.account_create_key<>p_create_key or (a.account_id is not null and a.account_id<>p_account_id) then raise exception 'account_conflict'; end if;
+  update public.marketplace_connected_accounts set account_id=p_account_id where tenant=p_tenant and seller_id=p_seller_id;
+exception when unique_violation then raise exception 'account_conflict';
+end $$;
+create function public.marketplace_acquire_account_refresh(p_tenant text,p_account_id text,p_lease_id text)
+returns boolean language plpgsql security invoker set search_path = '' as $$
+begin
+  if p_lease_id is null or p_lease_id !~ '^[a-f0-9]{64}$' then return false; end if;
+  update public.marketplace_connected_accounts set refresh_lease_id=p_lease_id,refresh_expires_at=clock_timestamp()+interval '20 seconds',ready=false,connection='pending',checked_at=null
+    where tenant=p_tenant and account_id=p_account_id and (refresh_expires_at is null or refresh_expires_at<=clock_timestamp());
+  return found;
+end $$;
+create function public.marketplace_save_account_readiness(p_tenant text,p_account_id text,p_lease_id text,p_ready boolean,p_connection text,p_checked_at timestamptz)
+returns boolean language plpgsql security invoker set search_path = '' as $$
+begin
+  if p_ready is null or p_connection is null or p_connection not in ('pending','ready','restricted') or p_ready<>(p_connection='ready') or p_checked_at is null or not isfinite(p_checked_at) then return false; end if;
+  update public.marketplace_connected_accounts set ready=p_ready,connection=p_connection,
+    checked_at=least(p_checked_at,clock_timestamp()),refresh_lease_id=null,refresh_expires_at=null
+    where tenant=p_tenant and account_id=p_account_id and refresh_lease_id=p_lease_id and refresh_expires_at>clock_timestamp();
+  return found;
+end $$;
+revoke all on function public.marketplace_ensure_account_slot(text,uuid),public.marketplace_save_account(text,uuid,text,text),public.marketplace_acquire_account_refresh(text,text,text),public.marketplace_save_account_readiness(text,text,text,boolean,text,timestamptz) from public,anon,authenticated;
+grant execute on function public.marketplace_ensure_account_slot(text,uuid),public.marketplace_save_account(text,uuid,text,text),public.marketplace_acquire_account_refresh(text,text,text),public.marketplace_save_account_readiness(text,text,text,boolean,text,timestamptz) to service_role;
+commit;
+begin;
 -- Service-only ownership proofs. These functions never accept plaintext codes.
 create function public.marketplace_proof_hashes_equal(p_left text,p_right text)
 returns boolean language plpgsql security invoker set search_path='' as $$

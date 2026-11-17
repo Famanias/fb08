@@ -17,6 +17,21 @@ test('RPC adapter passes tenant and buyer proof privately and hides database err
 test('unsafe bigint rows fail closed rather than silently losing cents', () => {
   assert.throws(() => storedOrder({ gross_minor: '9007199254740993', fee_minor: 1, checkout_expires_at: 1 }));
 });
+test('account slot and refresh adapter preserve tenant, creation key and fencing arguments', async () => {
+  const calls: Array<{ path: string; body: Record<string, unknown>; url: URL }> = [];
+  const db = createClient('http://127.0.0.1:54321', 'test-only', { global: { fetch: async (input, init) => {
+    const url = new URL(String(input)); calls.push({ path: url.pathname, body: init?.body ? JSON.parse(String(init.body)) : {}, url });
+    if (url.pathname.endsWith('marketplace_ensure_account_slot')) return Response.json({ seller_id: 'seller', account_id: null, account_create_key: 'stable', prepared_at: '2026-11-17T00:00:00Z' });
+    if (url.pathname.endsWith('marketplace_connected_accounts')) return Response.json(null);
+    return Response.json(true);
+  } } });
+  const store = createPaymentStore(db);
+  assert.deepEqual(await store.ensureSellerAccountSlot('seller', 'local'), { sellerId: 'seller', accountId: null, accountCreateKey: 'stable', preparedAt: '2026-11-17T00:00:00Z' });
+  await store.saveSellerAccount('seller', 'local', 'acct_fixture', 'stable'); assert.equal(await store.acquireAccountRefresh('acct_fixture', 'local', 'fence'), true);
+  assert.equal(await store.saveAccountReadiness('acct_fixture', 'local', 'fence', { ready: false, connection: 'pending' }, '2026-11-17T00:00:00Z'), true);
+  assert.deepEqual(calls.slice(0, 4).map(c => c.body), [{ p_tenant: 'local', p_seller_id: 'seller' }, { p_tenant: 'local', p_seller_id: 'seller', p_account_id: 'acct_fixture', p_create_key: 'stable' }, { p_tenant: 'local', p_account_id: 'acct_fixture', p_lease_id: 'fence' }, { p_tenant: 'local', p_account_id: 'acct_fixture', p_lease_id: 'fence', p_ready: false, p_connection: 'pending', p_checked_at: '2026-11-17T00:00:00Z' }]);
+  assert.equal(await store.findAccountById('acct_fixture', 'local'), null); assert.equal(calls[4].url.searchParams.get('tenant'), 'eq.local'); assert.equal(calls[4].url.searchParams.get('account_id'), 'eq.acct_fixture');
+});
 
 test('seller proof adapter scopes private reads and RPC arguments', async () => {
   const calls: Array<{ url: URL; body: Record<string, unknown> | null }> = [];

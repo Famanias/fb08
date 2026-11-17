@@ -1,22 +1,16 @@
-import { randomBytes } from 'node:crypto';
 import type { PaymentDeps, SellerIdentity } from './contracts';
 import { MarketplaceError, validUuid } from '../../../features/marketplace/validation';
 import { jsonResponse, readCookieValue } from '../route-helpers';
-import { createPaymentStore } from './store';
-import { createSellerMailer } from './seller-mailer';
+import { createPaymentDeps } from './dependencies';
+import { refreshKnownAccount } from './connect-handlers';
+import { requireSeller } from './seller-authority';
+export { requireSeller } from './seller-authority';
 import { capabilityCookie, capabilityCookieName, codeHash, newCapability, normalizeSellerEmail, proofHash, validCapability } from './proof';
 import { assertPaymentOrigin, paymentErrorResponse, readPaymentJson } from './request';
 
-function productionDeps(): PaymentDeps {
-  const tenant = process.env.MARKETPLACE_PAYMENT_TENANT; const configuredOrigin = process.env.MARKETPLACE_APP_ORIGIN; const secret = process.env.AUTH_SESSION_SECRET;
-  if (process.env.MARKETPLACE_PAYMENTS_ENABLED !== 'true' || !tenant || !/^[a-zA-Z0-9_-]{1,100}$/.test(tenant) || !configuredOrigin || !secret || secret.length < 32) throw new Error('Payment configuration unavailable');
-  const origin = new URL(configuredOrigin);
-  if (origin.origin !== configuredOrigin || origin.username || origin.password || (origin.protocol !== 'https:' && !(origin.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(origin.hostname)))) throw new Error('Payment origin unavailable');
-  return { store: createPaymentStore(), mailer: createSellerMailer(), context: { tenant, origin: origin.origin, enabled: true }, secret, now: () => new Date(), randomBytes };
-}
-function checkedDeps(deps?: PaymentDeps): PaymentDeps {
-  const resolved = deps ?? productionDeps();
-  if (!resolved.context.enabled) throw new MarketplaceError('Payments unavailable.', 503);
+function checkedDeps(deps?: PaymentDeps, newPayments = true): PaymentDeps {
+  const resolved = deps ?? createPaymentDeps(newPayments);
+  if (newPayments && !resolved.context.enabled) throw new MarketplaceError('Payments unavailable.', 503);
   return resolved;
 }
 function secure(deps: PaymentDeps) { return new URL(deps.context.origin).protocol === 'https:'; }
@@ -34,13 +28,6 @@ function newCode(deps: PaymentDeps) {
   // Rejection sampling avoids modulo bias across the one million codes.
   let n: number; do { n = deps.randomBytes(4).readUInt32BE(); } while (n >= 4294000000);
   return String(n % 1000000).padStart(6, '0');
-}
-export async function requireSeller(req: Request, deps: PaymentDeps): Promise<SellerIdentity> {
-  const capability = token(req, 'seller', deps);
-  if (!deps.context.enabled || !validCapability(capability)) throw new MarketplaceError('Verify seller email.', 401);
-  const seller = await deps.store.findSellerSession(proofHash('seller-session', capability, deps.secret), deps.context.tenant, deps.now());
-  if (!seller || seller.tenant !== deps.context.tenant) throw new MarketplaceError('Verify seller email.', 401);
-  return seller;
 }
 export async function handleSellerChallenge(req: Request, injected?: PaymentDeps): Promise<Response> {
   try {
@@ -73,7 +60,7 @@ export async function handleSellerVerify(req: Request, injected?: PaymentDeps): 
 }
 export async function handleSellerLogout(req: Request, injected?: PaymentDeps): Promise<Response> {
   try {
-    const deps = checkedDeps(injected); assertPaymentOrigin(req, deps.context); await readPaymentJson(req);
+    const deps = checkedDeps(injected, false); assertPaymentOrigin(req, deps.context); await readPaymentJson(req);
     // Persistent 30/hour/IP budget, separate from verification and shared even without a cookie.
     await rate(req, deps, 'payment-seller-logout-ip', 30);
     const capability = token(req, 'seller', deps);
@@ -83,10 +70,13 @@ export async function handleSellerLogout(req: Request, injected?: PaymentDeps): 
 }
 export async function handleSellerStatus(req: Request, injected?: PaymentDeps): Promise<Response> {
   try {
-    const deps = checkedDeps(injected);
+    const deps = checkedDeps(injected, false);
     let seller: SellerIdentity;
     try { seller = await requireSeller(req, deps); } catch (error) { if (error instanceof MarketplaceError && error.status === 401) return jsonResponse({ verified: false, connection: 'not_connected' }); throw error; }
-    const connection = await deps.store.findSellerConnection(seller.id, deps.context.tenant);
+    const account = await deps.store.findSellerAccount(seller.id, deps.context.tenant);
+    let connection = await deps.store.findSellerConnection(seller.id, deps.context.tenant);
+    const age = account ? +deps.now() - Date.parse(account.checkedAt) : 0;
+    if (account && (!Number.isFinite(age) || age < 0 || age > 60000)) connection = (await refreshKnownAccount(account, deps)).connection;
     return jsonResponse({ verified: true, connection: connection ?? 'not_connected' });
   } catch (error) { return paymentErrorResponse(error); }
 }

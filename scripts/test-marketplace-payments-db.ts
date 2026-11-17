@@ -1,6 +1,6 @@
 /** Committed concurrency fixtures, exclusively on an explicitly selected local API. */
 import assert from 'node:assert/strict';
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { createClient } from '@supabase/supabase-js';
 import { createPaymentStore } from '../lib/server/marketplace-payments/store';
 import type { CanonicalCheckout } from '../lib/server/marketplace-payments/contracts';
@@ -27,10 +27,26 @@ async function main() {
     checked(await db.from('marketplace_payment_inventory').insert({ listing_id: listingId, tenant }));
     checked(await db.from('marketplace_payment_sellers').insert({ id: sellerId, tenant, email_normalized: `${run}@example.invalid`, verified_at: new Date().toISOString() }));
     assert.equal(await store.findSellerConnection(sellerId, tenant), null);
-    checked(await db.from('marketplace_connected_accounts').insert({ seller_id: sellerId, tenant, account_create_key: `create-${run}` }));
+    const slots = await Promise.all(Array.from({ length: 20 }, () => store.ensureSellerAccountSlot(sellerId, tenant)));
+    assert.equal(new Set(slots.map(slot => slot.accountCreateKey)).size, 1, 'parallel clicks share durable creation identity');
+    assert.ok(slots.every(slot => slot.accountId === null && slot.preparedAt === slots[0].preparedAt));
     assert.equal(await store.findSellerConnection(sellerId, tenant), 'pending');
     assert.equal(await store.findSellerAccount(sellerId, tenant), null);
-    checked(await db.from('marketplace_connected_accounts').update({ account_id: accountId, ready: true, connection: 'ready', checked_at: new Date().toISOString() }).eq('seller_id', sellerId).eq('tenant', tenant));
+    await Promise.all(Array.from({ length: 10 }, () => store.saveSellerAccount(sellerId, tenant, accountId, slots[0].accountCreateKey)));
+    await assert.rejects(store.saveSellerAccount(sellerId, tenant, 'acct_rogue', slots[0].accountCreateKey));
+    assert.equal((await store.findAccountById(accountId, tenant))?.sellerId, sellerId);
+    assert.equal(await store.findAccountById(accountId, 'foreign'), null);
+    const leases = Array.from({ length: 20 }, () => randomBytes(32).toString('hex'));
+    const refreshes = await Promise.all(leases.map(id => store.acquireAccountRefresh(accountId, tenant, id)));
+    assert.equal(refreshes.filter(Boolean).length, 1, 'only one simultaneous refresh wins');
+    const lease = leases[refreshes.findIndex(Boolean)];
+    assert.equal((await store.findSellerAccount(sellerId, tenant))?.ready, false);
+    const saves = await Promise.all([1, 2].map(() => store.saveAccountReadiness(accountId, tenant, lease, { ready: true, connection: 'ready' }, new Date().toISOString())));
+    assert.deepEqual(saves.sort(), [false, true], 'one fenced save releases the lease');
+    assert.equal(await store.saveAccountReadiness(accountId, tenant, '0'.repeat(64), { ready: false, connection: 'restricted' }, new Date().toISOString()), false);
+    assert.equal((await store.findSellerAccount(sellerId, tenant))?.ready, true);
+    const mappings = await db.from('marketplace_connected_accounts').select('account_id').eq('tenant', tenant); checked(mappings); assert.equal(mappings.data?.length, 1);
+    console.log('PASS: 20 account slots => 1 stable key; 10 idempotent attachments => 1 account; 20 refreshes => 1 lease, 2 saves => 1 fence winner.');
     const challengeId = randomUUID(); const proofNow = new Date(); const email = `${run}@example.invalid`;
     const candidateHash = codeHash(challengeId, email, browserHash, '123456', proofSecret);
     await store.issueChallenge({ id: challengeId, emailNormalized: email, tenant, browserHash, codeHash: candidateHash, expiresAt: new Date(+proofNow + 600000).toISOString() });

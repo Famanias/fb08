@@ -34,6 +34,7 @@ create table public.marketplace_connected_accounts (
   charges_enabled boolean not null default false, payouts_enabled boolean not null default false,
   details_submitted boolean not null default false, card_payments_active boolean not null default false,
   transfers_active boolean not null default false, disabled_reason text,
+  refresh_lease_id text, refresh_expires_at timestamptz,
   primary key(tenant,seller_id), unique(tenant,seller_id,account_id),
   foreign key(seller_id,tenant) references public.marketplace_payment_sellers(id,tenant) on delete restrict,
   check(not ready or (account_id is not null and connection='ready' and checked_at is not null))
