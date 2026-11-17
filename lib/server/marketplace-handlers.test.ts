@@ -1,6 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import sharp from 'sharp';
+import { createHmac } from 'node:crypto';
+import { prepareImage } from './marketplace-image';
+import { MarketplaceError } from '../../features/marketplace/validation';
 import { handleBrowse, handleCreate, handleInquiry } from './marketplace-handlers';
 import type { MarketplaceStore } from './marketplace-store';
 
@@ -76,6 +79,24 @@ test('sandbox publication uses only server tenant and fingerprints inventory kin
   assert.notEqual(calls[0].fingerprint, calls[1].fingerprint);
   assert.equal((await handleCreate(await createRequest({ inventoryKind: 'sandbox', paymentTenant: 'forged' }), deps)).status, 400);
   assert.equal(calls.length, 2);
+});
+
+test('ordinary publication retry preserves the pre-inventory-kind fingerprint and original request key', async () => {
+  const deps = fixture(); const request = await createRequest(); const form = await request.clone().formData();
+  const image = await prepareImage(form.get('photo') as File);
+  // Literal normalization/order from old main, before inventoryKind was introduced.
+  const legacy = { title: 'Camera', description: 'Works', price: '10.50', category: 'Electronics', sellerEmail: 'private@example.com', sellerDisplayName: 'Guest Seller' };
+  const hash = (value: string | Buffer) => createHmac('sha256', deps.secret).update(value).digest('hex');
+  const persistedFingerprint = hash(JSON.stringify(legacy) + hash(image));
+  deps.store.publish = async (key, fingerprint) => {
+    assert.equal(key, ID);
+    if (fingerprint !== persistedFingerprint) throw new MarketplaceError('Request conflict.', 409);
+    return ID;
+  };
+  const response = await handleCreate(request, deps);
+  assert.equal(response.status, 201); assert.deepEqual(await response.json(), { id: ID });
+  assert.equal((await handleCreate(await createRequest({ inventoryKind: 'ordinary' }), deps)).status, 201);
+  assert.equal((await handleCreate(await createRequest({ inventoryKind: 'sandbox' }), { ...deps, paymentTenant: 'local' })).status, 409, 'sandbox cannot reuse an ordinary request fingerprint');
 });
 test('ambiguous publication failure retains the photo until safe orphan reconciliation', async () => {
   const deps = fixture(); deps.store.publish = async () => { throw new Error('private@example.com'); };

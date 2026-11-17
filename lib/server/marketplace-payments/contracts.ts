@@ -75,6 +75,7 @@ export interface PaymentStore {
   applyCheckout(input: { orderId: string; tenant: string; eventId: string; eventType: string; canonical: CanonicalCheckout; now: Date }): Promise<'paid' | 'expired' | 'held' | 'duplicate' | 'review'>;
   saveSettlement(orderId: string, tenant: string, settlement: Settlement): Promise<void>;
   findInventory(listingId: string, tenant: string): Promise<{ listingId: string; inventoryKind: 'ordinary' | 'demo' | 'sandbox'; status: 'active' | 'sold' | 'removed' } | null>;
+  inspectInventory(listingId: string, tenant: string): Promise<{ listingId: string; inventoryKind: string; status: string; priceMinor: number; orderIds: string[] } | null>;
   findPaidWebhookReceipt(orderId: string, tenant: string): Promise<{ eventId: string; eventType: 'checkout.session.completed' } | null>;
   listReconciliationOrders(tenant: string): Promise<StoredOrder[]>;
 }

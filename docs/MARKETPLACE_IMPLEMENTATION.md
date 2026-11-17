@@ -83,6 +83,8 @@ For rollback, promote the previous known-good Vercel production deployment. Reta
 
 ## Verification record
 
+The record below describes the original Marketplace release. The later sandbox payment feature has a separate [operations and local QA runbook](MARKETPLACE_PAYMENTS.md). Its four additive migrations, tests and private operator commands have been verified locally; hosted payment setup, provider acceptance and deployment remain pending. Do not interpret the original deployment instructions or historical verification below as authorization or evidence for payment rollout.
+
 - Existing baseline: 23 tests passed; baseline lint passed.
 - Current unit/handler suite: 37 tests passed, including upload spoofing/corruption/byte/pixel limits, DTO privacy, origin checks, bounded requests, rate denial and ambiguous-publication cleanup behavior.
 - Local live integration: all four flows, Storage retrieval, real inquiry row, idempotency, public privacy and Board/People route regression passed.

@@ -3,6 +3,7 @@ import { getSupabaseAdminClient } from '../supabase-admin';
 import { MarketplaceError } from '../../../features/marketplace/validation';
 import type { PaymentStore, PreparedOrder, StoredOrder, SellerAccount } from './contracts';
 import type { OrderConfirmation, PublicPaymentState } from '../../../features/marketplace/payments/types';
+import { decimalToMinor } from '../../../features/marketplace/payments/rules';
 
 function sellerAccount(row: Record<string, unknown>): SellerAccount {
   return { sellerId: String(row.seller_id), accountId: String(row.account_id), ready: row.ready === true, connection: row.connection as SellerAccount['connection'], checkedAt: typeof row.checked_at === 'string' ? row.checked_at : '', accountCreateKey: String(row.account_create_key) };
@@ -132,6 +133,15 @@ export function createPaymentStore(db: SupabaseClient = getSupabaseAdminClient()
     async findPaidWebhookReceipt(orderId, tenant) {
       const { data, error } = await db.from('marketplace_stripe_events').select('event_id,event_type').eq('order_id', orderId).eq('tenant', tenant).eq('event_type', 'checkout.session.completed').eq('outcome', 'paid').eq('source', 'webhook').order('created_at').limit(1).maybeSingle(); checked(error);
       return data ? { eventId: data.event_id, eventType: 'checkout.session.completed' } : null;
+    },
+    async inspectInventory(listingId, tenant) {
+      const { data: binding, error } = await db.from('marketplace_payment_inventory').select('listing_id').eq('listing_id', listingId).eq('tenant', tenant).maybeSingle(); checked(error);
+      if (!binding) return null;
+      const { data, error: listingError } = await db.from('marketplace_listings').select('id,inventory_kind,status,price').eq('id', listingId).maybeSingle(); checked(listingError);
+      if (!data) return null;
+      // Only this listing's current holds/sale, never a tenant-wide inventory scan.
+      const { data: orders, error: orderError } = await db.from('marketplace_orders').select('id').eq('listing_id', listingId).eq('tenant', tenant).in('state', ['preparing', 'open', 'review', 'paid']).limit(2); checked(orderError);
+      return { listingId: data.id, inventoryKind: data.inventory_kind, status: data.status, priceMinor: decimalToMinor(String(data.price)), orderIds: (orders ?? []).map(row => String(row.id)) };
     },
     async listReconciliationOrders(tenant) {
       // Paginate to avoid silently dropping holds past PostgREST's row limit.

@@ -30,3 +30,119 @@ Status refreshes a linked account when its cached check is older than sixty seco
 Local verification uses injected SDK requests and `node:test`; no provider credentials are needed. `supabase/tests/marketplace-connect.sql` rolls back service-only slot/attachment/fence assertions; `npm run test:marketplace:payments:db` requires explicitly selected loopback test API/key and checks committed concurrent slots, leases, proof exchange, reservations and fulfillment, then removes its exact fixtures.
 
 Official references: [Stripe Node SDK](https://github.com/stripe/stripe-node), [Accounts v1 create](https://docs.stripe.com/api/accounts/create), [Account Links](https://docs.stripe.com/api/account_links/create), [idempotent requests](https://docs.stripe.com/api/idempotent_requests), [Supabase database functions](https://supabase.com/docs/guides/database/functions).
+
+## Current release boundary
+
+Local implementation and QA are complete. Hosted payment migrations, shared Stripe credentials/authority, connected account country support, verified email delivery, public Connect webhook registration, hosted Checkout, deployment and submission are **pending**. Keep `MARKETPLACE_PAYMENTS_ENABLED=false`. Historical Marketplace release results in `MARKETPLACE_IMPLEMENTATION.md` are not hosted payment acceptance evidence. Final submission remains manual.
+
+Shared sandbox keys expose other candidates' resources and operations. Never enumerate, expire, cancel, attach, classify or delete someone else's records. Every operation uses the configured tenant and opaque app/seller/order/listing metadata; a valid signature from a foreign tenant returns 200 without reads or writes to that tenant. Do not publish raw Dashboard exports, screenshots, emails, cookies, OTPs, order links/proofs, connected account IDs or webhook payloads. Use an approved secure configuration channel for credentials, never CLI argument literals, shell history, npm scripts, git or public issue comments. Real cards, identity documents, bank data and inventory are prohibited in QA.
+
+## Environment and authority
+
+| Names | Scope and purpose |
+| --- | --- |
+| `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Public project/API configuration; legacy `NEXT_PUBLIC_SUPABASE_ANON_KEY` is the optional fallback. Never substitute a service key. |
+| `SUPABASE_SERVICE_ROLE_KEY` | Server/operator only; private payment/contact tables and service RPCs. |
+| `AUTH_SESSION_SECRET` | Server HMAC secret, at least 32 characters for payment proofs. Existing Board sessions remain separate. Rotation invalidates proofs and changes request fingerprints; plan it carefully. |
+| `MARKETPLACE_PAYMENTS_ENABLED` | Explicit `true` enables new purchases/onboarding only after the gate; absent/`false` disables them. |
+| `MARKETPLACE_PAYMENT_TENANT`, `MARKETPLACE_APP_ORIGIN` | Stable unique deployment namespace and exact origin. No trailing slash/path/query; HTTP loopback is local-only. Never reuse preview/production tenants. |
+| `MARKETPLACE_STRIPE_ACCOUNT_COUNTRY` | Explicit, verified supported ISO country, frozen with controller/API configuration during pending creation. |
+| `STRIPE_SECRET_KEY`, `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`, `STRIPE_WEBHOOK_SECRET` | Sandbox `sk_test_`, `pk_test_`, signing `whsec_`; publishable key is syntactically gated but redirect-only UI needs no Stripe.js. All other keys remain server-only. |
+| `RESEND_API_KEY`, `MARKETPLACE_SELLER_EMAIL_FROM` | Server email delivery; a bare normalized address at an actually verified domain and a controlled verification inbox are required. No fictional ownership, default sender or inaccessible demo mailbox. |
+| `MARKETPLACE_TEST_SUPABASE_URL`, `MARKETPLACE_TEST_SERVICE_ROLE_KEY` | Disposable loopback-only API and short-lived local role token, supplied in child memory by the local runner. Never point them at a hosted service. |
+| `MARKETPLACE_TEST_DB_CONTAINER`, `MARKETPLACE_TEST_DB_NAME` | Explicit owned SQL pair for local lock regressions; runner supplies these without secrets. |
+
+Seller ownership uses `lower(trim(email))`, preserves plus addressing/dots, and requires a single-use six-digit code within ten minutes, at most five attempts, browser-bound challenge and durable rate limits. The verified seller cookie lasts one hour. Buyer bootstrap creates a separate opaque browser capability; its order read scope lasts seven days. Proofs are HttpOnly/SameSite cookies (Secure host-prefixed on HTTPS); DB stores hashes, not raw capabilities or codes. Board/People credentials never grant seller/buyer authority.
+
+## Routes and persisted states
+
+| Route | Behavior |
+| --- | --- |
+| `/marketplace`, `/marketplace/new`, `/marketplace/[id]` | Existing browse/publication/detail/inquiry flows; new publication defaults ordinary, with explicit fictional sandbox opt-in. Sold detail remains public; active feed excludes sold/removed. Removed detail is 404. |
+| `/marketplace/payments` | Seller challenge/verify, readiness, Connect, refresh and logout controls. |
+| `/marketplace/payments/return`, `/marketplace/payments/refresh` | Return is no proof of readiness. Refresh requires seller proof and a POST; GET never generates a link. |
+| `/marketplace/orders/[orderId]` | Private browser-scoped status; noindex/no-referrer/no-store. Polls for at most 60 seconds, then pending plus manual refresh (15-second request deadline); observed paid cannot be demoted by a late response. |
+| `/api/marketplace/payments/seller/{challenge,verify,status,logout}` | Same-origin verified seller proof lifecycle; challenge/verify/logout are POST and status is GET. |
+| `/api/marketplace/payments/connect`, `/connect/refresh` under the same payments prefix | Proof-protected POSTs; server determines account, country and destinations. |
+| `/api/marketplace/payments/buyer-session`, `/checkout` under the same prefix | POST bootstrap and one listing-ID checkout request; no browser-supplied money/account/tenant authority. |
+| `/api/marketplace/payments/orders/[orderId]` | GET only the approved order DTO with matching tenant, buyer hash and unexpired read scope. No public DB inspection endpoint exists. |
+| `/api/marketplace/stripe/webhook` | Bounded raw-body signed POST; exact registered snapshot event types only. Existing signed processing survives the new-purchase switch being off. |
+
+Inventory kinds are ordinary, demo (both inquiry-only), and sandbox. Sandbox display is unavailable, ready, reserved or sold. Browse reads a batched DB availability cache without provider calls. Eligible detail refreshes readiness after 60 seconds, fences concurrent writes, then rereads eligibility. Checkout independently refreshes the account even when the cache is fresh. A stale detail can show unavailable until refresh succeeds; a review freeze always wins over readiness.
+
+Order states are `preparing` → `open` → `paid` or `expired`, with `review` retaining a conservative hold on anomalous evidence. The unique held/sold association prevents two valid sessions for one item; timeout/browser cancel alone never releases inventory. Immutable order amounts, exact quantity one, PHP currency, canonical session/Intent metadata, account, expiry and original creation parameters are validated again under DB locks. Only succeeded, fully received canonical payment can sell once. A redirect/query parameter never fulfills. Duplicate/delayed events preserve paid and attach only the canonical matching session. A later signed completed receipt can establish webhook evidence for an already operator-reconciled sale without another sale.
+
+PHP prices use integer minor units. Eligibility requires gross of at least ₱100.00 and at most ₱999,999.99. The 10% application fee rounds half up to one minor unit. For ₱1,234.50: gross 123450, fee 12345, seller before processing 111105 minor units. This last number is **not net payout**. Checkout uses direct connected-account charges and disallows adjustable quantity, promotion/tax/shipping/recovery changes. Paid fee enrichment is independent: canonical charge/balance data supplies actual processing/other fees and settlement currency; unknown/delayed fee details remain pending. Application fees are subtracted once, and currency conversion is not invented.
+
+## Additive migrations and permissions
+
+The existing Marketplace baseline is `20261116180858_fb08_marketplace.sql` followed by `20261116182303_marketplace_literal_search.sql`. The four payment migrations, in order, are:
+
+1. `20261117004434_marketplace_payments.sql` — inventory kinds and private payment tables.
+2. `20261117004437_marketplace_payment_functions.sql` — service-only proof/account/reservation/fulfillment functions and ordinary/sandbox publication guard.
+3. `20261117095439_marketplace_payment_reconciliation.sql` — delayed paid receipts, anomaly evidence and monotonic reconciliation.
+4. `20261117102524_marketplace_payment_presentation.sql` — active/sold public detail columns, batched availability and private order confirmation.
+
+On a later authorized hosted rollout, inspect current schema/history and backup first, review exactly these feature files against that schema, and apply only missing reviewed feature migrations in order. Old linked Board history differs from repository filenames: **never** bulk `db push --include-all`, replay/repair Board history, reset a real schema or delete user inventory. No hosted migration has been applied for this feature. Keep explicit public column grants, RLS on private tables, service_role-only RPC execution, security invoker and empty search paths. Run SQL grant/RLS checks and security advisors on the explicitly selected target after authorized changes.
+
+Default ordinary publication preserves the original pre-payment HMAC fingerprint and idempotency key. Explicit sandbox publication hashes its kind separately. SQL independently refuses same-key ordinary→sandbox reclassification, sandbox→ordinary changes or tenant rebinding even if a fingerprint is mistakenly reused. Existing exact demo classification does not change the old ordinary request identity.
+
+## Reproducible local verification
+
+Requirements: installed Node >=20, dependencies from `npm ci`, Docker with `postgres:17-alpine` and `public.ecr.aws/supabase/postgrest:v14.18` available. Normal `npm test` never requires Docker. The checked-in runner does not read `.env.local`, linked Supabase state, provider keys or ignored `.superpowers` wrappers. Reserve loopback ports 55449/55450/55451, and 55452 for privacy rendering. Stop existing dev/start servers before the privacy build.
+
+```sh
+# Once, creates a NEW owned stack; refuses existing resource names or a nonempty DB.
+node scripts/run-marketplace-payments-local.cjs --setup
+# Repeat all SQL and committed concurrency/HTTP/read/lock checks against that stack.
+npm run test:marketplace:payments:local
+# Same checks, followed sequentially by canary production build, start, public asset/HTML scan.
+npm run test:marketplace:payments:privacy
+npm test
+npm run lint
+npm run typecheck
+npm run build
+```
+
+The harness uses labeled containers `fb08-marketplace-payments-local-db` / `fb08-marketplace-payments-local-rest`, dedicated network `fb08-marketplace-payments-local` and database `marketplace_payments_local`. Setup loads the two Marketplace baseline files and all four feature migrations into an empty database. It bootstraps minimal Storage **catalog stubs**, not hosted Storage/Auth/Kong or Board schemas. A short-lived local service JWT and loopback `/rest/v1` proxy exercise actual PostgREST/Supabase JS and PostgreSQL transactions/locks. Local trust authentication is confined to this disposable Docker network/loopback stack, never a hosting configuration. No automatic drop/reset/removal command exists; inspect exact container names/ownership before any manual disposal.
+
+Six SQL suites run in transactions and roll back. Four committed runners test proof exchange/budgets, account creation/refresh races, 20 competing reservations, one sale under duplicate/signed events, late receipts, foreign/no-op events, terminal expiry races, scoped private reads, availability and lease lock-wait fencing. Random run IDs isolate committed fixtures; `finally` deletes exact fixture IDs/tenants and checks removal. The account-lock runner permits only the new owned pair or the previous task's exact owned `fb08-payments-task1-db` / `payments_red` pair. No arbitrary SQL target is accepted.
+
+`test:marketplace:payments:db` remains the focused concurrency script for a separately selected disposable loopback API using the two `MARKETPLACE_TEST_*` API names above. Prefer the wrapper to avoid handling/logging fixture JWTs. Unit/handler tests cover the four original Marketplace flows, Board/People/custom auth, private DTOs and provider guards. Minimal Storage catalogs do not verify hosted image delivery; local rendering verifies shells/routes and privacy, while original Marketplace SQL/handlers exercise persistence and validation. Prior responsive UI checks remain documented in the implementation review; they do not prove hosted provider acceptance.
+
+CLI discovery on this machine: Supabase 2.119.0 (`supabase --help`, `supabase db --help`, `supabase db query --help`, `supabase migration list --help`), Vercel 62.1.0 (`vercel --version`, `vercel --help`). Stripe CLI is not installed; do not guess commands or install/register/listen against shared credentials automatically. On a later authorized session discover `stripe --version`/`stripe --help` first and follow the installed version. A Supabase update notice to v3.2.0 is informational; no CLI/framework upgrade is part of this task.
+
+## Operator inspection, classification and recovery
+
+After authorized human onboarding/Checkout has produced an owned order, use secure server configuration in ignored `.env.local`:
+
+```sh
+npm run test:marketplace:payments:verify -- --base <exact-origin> --order-id <owned-order-uuid>
+# Equivalent:
+node --env-file=.env.local --import=tsx scripts/verify-marketplace-payments.ts --base <exact-origin> --order-id <owned-order-uuid>
+```
+
+This command is strictly read-only. It checks only that tenant/order, matching connected seller, bound sandbox listing/price and one current hold/sale, real paid webhook receipt and canonical sandbox session/Intent. No readiness refresh, reconcile, database write, Checkout creation/expiry/cancel, mail or public inspection endpoint is used. It reports only `{paid,sold,webhookConfirmed,feeDetails}`; all first three must be true or inspection fails generically. Fee details may be confirmed or explicitly pending. Reads are point-in-time evidence; rerun after concurrent state changes. It deliberately does not repair missing receipts. Imports of verifier/classifier/reconciler are safe and perform no setup or output.
+
+```sh
+# Exact manifest inspection only, including private contact comparison; output has IDs/counts only.
+node --env-file=.env.local --import=tsx scripts/classify-marketplace-demos.ts
+# Separate authorized mutation, never classify arbitrary title matches:
+node --env-file=.env.local --import=tsx scripts/classify-marketplace-demos.ts --apply
+# Default is a tenant-scoped work/action list without provider/DB mutation:
+node --env-file=.env.local --import=tsx scripts/reconcile-marketplace-payments.ts
+# Separate authorized recovery of original owned operations:
+node --env-file=.env.local --import=tsx scripts/reconcile-marketplace-payments.ts --apply
+```
+
+Missing demo IDs are reported, not created; any mismatched immutable manifest field/contact aborts all classification. Existing `test:marketplace:live` retains its ordinary temporary fixture and exact cleanup. It writes to its selected application/database and must only run later with target-specific write authorization; it is not the payment inspector.
+
+Recovery must preserve the original account and Checkout idempotency keys/API/parameter snapshots. Safe ambiguous Checkout retries use only the original operation before both 23 hours and its original expiry safety window; outside either window it remains held for private operator evidence. Never rekey/delete a stuck slot, create a second session, time-release a hold or mark paid from a browser. Open/expired Checkout may initially have no Intent: validate against the immutable snapshot for attach/hold only; paid still requires a real succeeded Intent. Expire only an owned canonical session and reread after provider races. Cancel a Checkout-associated Intent only in Stripe's permitted `requires_capture` state; `requires_payment_method`, `processing`, `requires_action` and inaccessible outcomes keep conservative holds. Reconciliation lists paid orders missing settlement for independent enrichment; fully enriched paid and expired rows leave the queue. Operator provenance never substitutes for a signed webhook receipt.
+
+For rollback, turn off new payments, retain signed webhook processing, order reads and operator recovery, and restore a compatible prior deployment only under deployment authorization. Preserve tables, proof/receipt history, pending operations and user data. A schema/data deletion requires its own reviewed retention/export plan; never reset the project. Investigate private generic errors in a controlled environment without logging raw provider/DB/contact payloads.
+
+## Evidence and pending acceptance checklist
+
+Local result on 2026-11-18: 137 unit/handler tests passed; lint, typecheck, optimized build, six SQL suites and committed concurrency/signed-event/read/lock runners passed. Privacy build scanned 63 public assets and ten rendered responses with injected canaries, including a real private contact row; private values were absent. `module.register()` emits the inherited Node DEP0205 build deprecation warning. The inherited npm audit record is 23 findings (22 moderate/one high); no unrelated automatic dependency upgrade was performed.
+
+Before later hosted acceptance, privately capture: platform/key authority and country/controller/PHP compatibility; actual verification email receipt; owned connected account readiness; one fictional listing gross/application-fee/seller-before-processing values; successful hosted test Checkout; signature-verified own paid receipt; one sold association despite concurrent/replayed events; pending/confirmed actual settlement details; wrong-browser/tenant/private-table denial; Board/People/auth and original Marketplace image/publication/browse/detail/inquiry regression; public bundle/HTML secret/contact scans; and exact fixture cleanup. Record environment/versions/date and pass/pending status without raw IDs/proofs/contacts. Review screenshots manually and publish only sanitized public UI plus captions in a minimal manifest (no private metadata/network exports). Do not commit raw captures. No public screenshot manifest or hosted acceptance result has been produced by the local task.

@@ -68,7 +68,9 @@ export async function handleCreate(req: Request, deps: Deps = {}) {
     const store = deps.store ?? createMarketplaceStore();
     await rateLimit(req, store, 'listing', secret);
     const image = await prepareImage(photo);
-    const fingerprint = hash(JSON.stringify(input) + hash(image, secret), secret);
+    // Preserve pre-payment ordinary request fingerprints across upgrades. Sandbox remains explicit.
+    const { inventoryKind, ...legacyInput } = input;
+    const fingerprint = hash(JSON.stringify(inventoryKind === 'ordinary' ? legacyInput : input) + hash(image, secret), secret);
     const id = randomUUID(); const path = `listings/${id}.webp`;
     await store.upload(path, image);
     const result = await store.publish(key, fingerprint, id, path, input, paymentTenant);

@@ -5,6 +5,8 @@ import { createClient } from '@supabase/supabase-js';
 import { createPaymentStore } from '../lib/server/marketplace-payments/store';
 import type { CanonicalCheckout } from '../lib/server/marketplace-payments/contracts';
 import { codeHash, proofHash } from '../lib/server/marketplace-payments/proof';
+import { inspectPaymentOrder } from './verify-marketplace-payments';
+import { paymentFixture } from '../lib/server/marketplace-payments/test-fixture';
 
 async function main() {
   const target = process.env.MARKETPLACE_TEST_SUPABASE_URL;
@@ -79,12 +81,17 @@ async function main() {
       line_items: [{ quantity: 1, price_data: { currency: 'php', unit_amount: 123450 } }],
       payment_intent_data: { application_fee_amount: 12345, metadata },
     } });
-    const canonical: CanonicalCheckout = { sessionId: `cs_${run}`, accountId, paymentIntentId: `pi_${run}`, status: 'complete', paymentStatus: 'paid', intentStatus: 'succeeded', livemode: false, currency: 'php', grossMinor: 123450, feeMinor: 12345, quantity: 1, intentAmountReceivedMinor: 123450, intentCurrency: 'php', url: null, expiresAt: order.checkoutExpiresAt, clientReferenceId: order.id, metadata, intentMetadata: metadata };
-    const transitions = await Promise.all([1, 2].map(i => store.applyCheckout({ orderId: order.id, tenant, eventId: `evt_${run}_${i}`, eventType: 'checkout.session.completed', canonical, now: new Date() })));
+    const canonical: CanonicalCheckout = { sessionId: `cs_test_${run.replaceAll('-', '')}`, accountId, paymentIntentId: `pi_${run.replaceAll('-', '')}`, status: 'complete', paymentStatus: 'paid', intentStatus: 'succeeded', livemode: false, currency: 'php', grossMinor: 123450, feeMinor: 12345, quantity: 1, intentAmountReceivedMinor: 123450, intentCurrency: 'php', url: null, expiresAt: order.checkoutExpiresAt, clientReferenceId: order.id, metadata, intentMetadata: metadata };
+    const transitions = await Promise.all([1, 2].map(i => store.applyCheckout({ orderId: order.id, tenant, eventId: `evt_${run.replaceAll('-', '')}_${i}`, eventType: 'checkout.session.completed', canonical, now: new Date() })));
     assert.deepEqual(transitions.sort(), ['duplicate', 'paid']);
     assert.equal((await store.findOrder(order.id, tenant))?.state, 'paid');
     assert.equal((await store.findInventory(listingId, tenant))?.status, 'sold');
     assert.ok(await store.findPaidWebhookReceipt(order.id, tenant));
+    const inspection = paymentFixture().deps;
+    inspection.store = store; inspection.context = { tenant, origin: 'http://127.0.0.1:55452', enabled: false };
+    inspection.stripe.readCheckout = async () => canonical;
+    assert.deepEqual(await inspectPaymentOrder({ base: inspection.context.origin, orderId: order.id }, inspection), { paid: true, sold: true, webhookConfirmed: true, feeDetails: 'pending' });
+    console.log('PASS: read-only inspector validates real scoped inventory/price/one-sale association and paid receipt with injected provider reads.');
     assert.equal(await store.findOrder(order.id, 'foreign'), null);
     assert.equal((await store.listReconciliationOrders(tenant)).length, 1, 'paid order awaiting fee enrichment remains in operator work');
     await store.saveSettlement(order.id, tenant, { currency: 'php', grossMinor: 123450, applicationFeeMinor: 12345, stripeFeeMinor: 1000, otherFeeMinor: 0, netMinor: 110105 });

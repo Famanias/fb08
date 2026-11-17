@@ -5,7 +5,7 @@ import { randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 
 class LocalSqlSession {
-  private child = spawn('docker', ['exec', '-i', 'fb08-payments-task1-db', 'psql', '-U', 'postgres', '-d', 'payments_red', '-XAtq', '-v', 'ON_ERROR_STOP=1'], { stdio: 'pipe' });
+  private child = spawn('docker', ['exec', '-i', process.env.MARKETPLACE_TEST_DB_CONTAINER ?? 'fb08-payments-task1-db', 'psql', '-U', 'postgres', '-d', process.env.MARKETPLACE_TEST_DB_NAME ?? 'payments_red', '-XAtq', '-v', 'ON_ERROR_STOP=1'], { stdio: 'pipe' });
   private buffer = ''; private stderr = '';
   private pending: { marker: string; lines: string[]; resolve: (lines: string[]) => void; reject: (error: Error) => void } | null = null;
   constructor() {
@@ -86,6 +86,9 @@ async function scenario(kind: 'save' | 'acquire') {
   }
 }
 async function main() {
+  const container = process.env.MARKETPLACE_TEST_DB_CONTAINER ?? 'fb08-payments-task1-db';
+  const database = process.env.MARKETPLACE_TEST_DB_NAME ?? 'payments_red';
+  if (!((container === 'fb08-payments-task1-db' && database === 'payments_red') || (container === 'fb08-marketplace-payments-local-db' && database === 'marketplace_payments_local'))) throw new Error('Refusing unowned SQL target.');
   let failed = false;
   for (const kind of ['save', 'acquire'] as const) {
     try { await scenario(kind); }

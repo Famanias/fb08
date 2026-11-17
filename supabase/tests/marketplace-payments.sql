@@ -93,9 +93,23 @@ begin
   result:=public.marketplace_publish('40000000-0000-4000-8000-000000000002','fingerprint','40000000-0000-4000-8000-000000000001','listings/40000000-0000-4000-8000-000000000001.webp',input);
   assert result='40000000-0000-4000-8000-000000000001'::uuid;
   assert public.marketplace_publish('40000000-0000-4000-8000-000000000002','fingerprint',result,'listings/'||result||'.webp',input)=result;
+  perform pg_temp.expect_error(format('select public.marketplace_publish(%L,%L,%L,%L,%L)','40000000-0000-4000-8000-000000000002','fingerprint',result,'listings/'||result||'.webp',(input-'paymentTenant')||'{"inventoryKind":"ordinary"}'::jsonb),'request_conflict');
   perform pg_temp.expect_error(format('select public.marketplace_publish(%L,%L,%L,%L,%L)','40000000-0000-4000-8000-000000000002','fingerprint',result,'listings/'||result||'.webp',jsonb_set(input,'{paymentTenant}','"foreign"')),'request_conflict');
   perform pg_temp.expect_error(format('select public.marketplace_publish(%L,%L,%L,%L,%L)',gen_random_uuid(),'other',result,'listings/'||result||'.webp',input-'paymentTenant'),'invalid_inventory');
   perform pg_temp.expect_error(format('select public.marketplace_publish(%L,%L,%L,%L,%L)',gen_random_uuid(),'other',result,'listings/'||result||'.webp',jsonb_set(input,'{inventoryKind}','"ordinary"')),'invalid_inventory');
+end $$;
+-- An old-main ordinary request retains its result but cannot reclassify/rebind it,
+-- even if an operator mistakenly supplies the same stored fingerprint.
+do $$
+declare input jsonb; result uuid;
+begin
+  input:='{"title":"Test 1","description":"Fictional local test","price":"1234.50","category":"Other","sellerDisplayName":"Test","sellerEmail":"Test@Example.invalid"}';
+  insert into public.marketplace_requests(request_key,kind,fingerprint,result_id) values('40000000-0000-4000-8000-000000000003','listing','legacy-fingerprint','10000000-0000-4000-8000-000000000001');
+  result:=public.marketplace_publish('40000000-0000-4000-8000-000000000003','legacy-fingerprint',gen_random_uuid(),'unused',input);
+  assert result='10000000-0000-4000-8000-000000000001'::uuid;
+  perform pg_temp.expect_error(format('select public.marketplace_publish(%L,%L,%L,%L,%L)','40000000-0000-4000-8000-000000000003','legacy-fingerprint',result,'unused',input||'{"inventoryKind":"sandbox","paymentTenant":"local-test"}'::jsonb),'request_conflict');
+  assert not exists(select 1 from public.marketplace_payment_inventory where listing_id=result);
+  assert (select inventory_kind='ordinary' from public.marketplace_listings where id=result);
 end $$;
 -- Full expected fields and private contact are checked atomically.
 do $$
