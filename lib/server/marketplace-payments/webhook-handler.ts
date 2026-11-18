@@ -24,6 +24,17 @@ export async function handleStripeWebhook(req: Request, injected?: PaymentDeps):
     const signature = req.headers.get('stripe-signature'); if (!signature) return response(400);
     const deps = injected ?? createPaymentDeps(); let event: VerifiedPaymentEvent;
     try { event = deps.stripe.verifyEvent(raw, signature); } catch { return response(400); }
+    if (process.env.VERCEL_ENV === 'preview' && event.type === 'account.updated') {
+      console.info('fb08-account-event-diagnostic', JSON.stringify({
+        live: event.livemode,
+        accountPresent: Boolean(event.accountId),
+        accountValid: Boolean(event.accountId && /^acct_[A-Za-z0-9]{1,100}$/.test(event.accountId)),
+        objectMatchesAccount: event.objectId === event.accountId,
+        appMatches: event.metadata.fb08_app === 'marketplace-payments-v1',
+        tenantMatches: event.metadata.tenant === deps.context.tenant,
+        sellerPresent: Boolean(event.metadata.seller_id),
+      }));
+    }
     if (event.livemode || !['checkout.session.completed', 'checkout.session.expired', 'account.updated'].includes(event.type) || !event.accountId || !/^acct_[A-Za-z0-9]{1,100}$/.test(event.accountId) || event.metadata.fb08_app !== 'marketplace-payments-v1' || event.metadata.tenant !== deps.context.tenant) return response(200);
     const account = await deps.store.findAccountById(event.accountId, deps.context.tenant); if (!account) return response(200);
     if (event.type === 'account.updated') {
