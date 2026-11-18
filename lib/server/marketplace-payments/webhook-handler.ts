@@ -25,11 +25,24 @@ export async function handleStripeWebhook(req: Request, injected?: PaymentDeps):
     const deps = injected ?? createPaymentDeps(); let event: VerifiedPaymentEvent;
     try { event = deps.stripe.verifyEvent(raw, signature); } catch { return response(400); }
     if (process.env.VERCEL_ENV === 'preview' && event.type === 'account.updated') {
+      const envelope = JSON.parse(raw.toString('utf8')) as {
+        context?: unknown;
+        related_object?: { id?: unknown };
+        data?: { object?: { object?: unknown; account?: unknown; metadata?: unknown } };
+      };
+      const accountLike = (value: unknown) => typeof value === 'string' && /^acct_[A-Za-z0-9]{1,100}$/.test(value);
       console.info('fb08-account-event-diagnostic', JSON.stringify({
         live: event.livemode,
         accountPresent: Boolean(event.accountId),
         accountValid: Boolean(event.accountId && /^acct_[A-Za-z0-9]{1,100}$/.test(event.accountId)),
         objectMatchesAccount: event.objectId === event.accountId,
+        objectIdValid: accountLike(event.objectId),
+        objectIsAccount: envelope.data?.object?.object === 'account',
+        nestedAccountValid: accountLike(envelope.data?.object?.account),
+        contextPresent: typeof envelope.context === 'string',
+        contextIsAccount: accountLike(envelope.context),
+        relatedObjectIdValid: accountLike(envelope.related_object?.id),
+        metadataObjectPresent: Boolean(envelope.data?.object?.metadata),
         appMatches: event.metadata.fb08_app === 'marketplace-payments-v1',
         tenantMatches: event.metadata.tenant === deps.context.tenant,
         sellerPresent: Boolean(event.metadata.seller_id),
