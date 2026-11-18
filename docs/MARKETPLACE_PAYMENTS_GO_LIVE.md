@@ -4,15 +4,15 @@ The launch target is **public hosting with Stripe sandbox payments** at `https:/
 
 ## Rollout status on November 19, 2026
 
-**Account-based seller ownership is implemented locally. Preview Stripe is configured. The ownership migration, Preview release, and hosted sandbox Checkout are pending.**
+**Sandbox payments are enabled on Preview. Stripe Connect activation, an end-to-end purchase, and the public cutover are pending.**
 
 | Area | Completed and verified |
 | --- | --- |
 | Production release | The existing Vercel project `fb08` serves `Famanias/fb08` from `main` at `8da7243a2478643cd2e0580fb5eaba03971c24c4`. The current deployment, `fb08-mdwsmqzf3-team-e2117dad.vercel.app`, is the pre-enablement Vercel recovery point. Payments are disabled by default in this build. |
-| Hosted database | Applied the four original files in [step 3](#3-apply-the-payment-migrations-to-the-authorized-supabase-target) to the existing shared Supabase project and verified the exact versions in its migration ledger. Verified RLS and grants on nine private tables, service-only access to 18 Marketplace RPCs, and the 11 public listing columns. The pre-migration logical backup of the `public` schema and data is encrypted for the operator’s Windows account under `%LOCALAPPDATA%\fb08\marketplace-recovery\20261118-141306`. Decryption and content checks passed. A restore drill remains untested. |
+| Hosted database | All five payment migrations in [step 3](#3-apply-the-payment-migrations-to-the-authorized-supabase-target) are recorded as applied in the shared Supabase project. Verified the new tenant-scoped ownership constraints, private ownership rows, and service-only publication RPC. The encrypted backup taken before the fifth migration is under `%LOCALAPPDATA%\fb08\marketplace-recovery\20261118-221449`. Decryption and content checks passed. A restore drill remains untested. |
 | Existing Marketplace | The public listing detail changed from HTTP `500` to `200` after the schema update. The feed and image loaded, and Board, People, and session check routes returned `200`. The exact-manifest classifier verified 21 demo listings and zero missing fixtures after classification. Demos are inquiry-only. |
-| Preview deployment | `Famanias/stripe-connect-payments-plan` at `7c2c4c6dbde433f4e7e845583cee5e7480141d90` is Ready on the stable Preview origin below. Its source tree matches the current Production release. The branch has `MARKETPLACE_PAYMENTS_ENABLED=false`, tenant `fb08-stripe-preview`, and `MARKETPLACE_APP_ORIGIN` set to that origin. A Vercel Deployment Protection Exception applies to the stable branch domain. The generated build URL still requires Vercel authentication. |
-| Hosted Preview smoke test | With payments disabled, `test:marketplace:live` passed for ordinary creation and photo upload, feed filters, detail, private inquiries, anonymous permissions, Board, People, and session check routes. The verifier cleaned up its temporary listing, contact, inquiry, and photo. |
+| Preview deployment | `Famanias/stripe-connect-payments-plan` at `99431ec6f691592cd7290f0e48d440b0728285fe` is Ready on the stable Preview origin below. The running seller status endpoint verified `MARKETPLACE_PAYMENTS_ENABLED=true`. The tenant is `fb08-stripe-preview`. The disabled recovery deployment is `dpl_Btnmqum51WWMrN5X86NaECTHqiT3`. A Vercel Deployment Protection Exception applies to the stable branch domain. |
+| Hosted Preview smoke test | Before enablement, a guest received `401` for sandbox publication, a signed-in seller published a listing scoped to that account, and another account saw its own listing-required status. Ordinary Marketplace, image upload, inquiries, Board, People, and session checks also passed. The verifier cleaned up its temporary fixtures. |
 | Preview Stripe setup | Preview uses the project owner's personal Stripe sandbox. Stripe reported `US` and lists PHP as a supported charge currency for that country. The sandbox keys and Preview Connect webhook secret are configured on the Preview branch. The endpoint uses Snapshot events and the pinned API version. |
 | Webhook reachability | The redeployed Preview accepted a correctly signed synthetic event with HTTP `200` and rejected both an invalid signature and an unsigned request with `400`. The test event did not change an order. The Production route also returned `400` for an unsigned request. Stripe delivery and order processing still need an actual sandbox Checkout. |
 | Local code verification | Passed 135 tests, lint, typecheck, a production build, seven SQL suites, and the local Checkout and webhook integration runners. The account ownership test covered atomic publication, cross-account retries, and shared inquiry addresses. The privacy scan checked 60 public assets and 15 local responses. |
@@ -21,8 +21,8 @@ The launch target is **public hosting with Stripe sandbox payments** at `https:/
 
 ### Remaining work
 
-1. Apply the account-seller migration in step 3, then deploy the account-based seller revision to the stable Preview origin with payments off. Verify sign-in, listing ownership, and ordinary Marketplace smoke checks.
-2. Enable Preview and complete fb/08 seller sign-in, Stripe onboarding, a PHP Checkout, signed webhook delivery, Sold status, and the remaining acceptance checks in [step 5](#5-prove-the-purchase-in-preview).
+1. Activate Connect in the selected Stripe sandbox. Account creation returned a Stripe `400` saying that the platform needs to sign up for Connect. Retry the existing seller from Preview after activation.
+2. Complete Stripe onboarding, a PHP Checkout, signed webhook delivery, Sold status, and the remaining acceptance checks in [step 5](#5-prove-the-purchase-in-preview).
 3. After the owner reviews the Preview evidence and authorizes cutover, configure Production with tenant `fb08-stripe-production`, its own endpoint and signing secret, and its Production origin. Enable and redeploy, then repeat the sandbox purchase at the public site. See [step 6](#6-release-to-the-public-site-after-preview-passes).
 
 The assessment asks candidates to use its supplied sandbox keys. The project owner's sandbox is configured for Preview testing. Confirm with the assessor before submitting evidence generated with that sandbox. [Assessment instructions](https://tremendous-tiger-a4a.notion.site/Test-4-Stripe-Connect-41400bbdfc3b80a2909add50ab807591)
@@ -53,7 +53,7 @@ For a fresh checkout, `npm ci`, `npm test`, `npm run lint`, `npm run typecheck`,
 
 ## 3. Apply the payment migrations to the authorized Supabase target
 
-**The first four versions are applied to the shared Supabase project.** Apply the fifth version before deploying the account-based seller revision. Confirm that the target has the Board user table, Marketplace baseline, and Storage setup.
+**All five versions are applied to the shared Supabase project.** If deploying to another Supabase target, confirm that it has the Board user table, Marketplace baseline, and Storage setup before applying the payment migrations.
 
 1. In the Supabase Dashboard, confirm the exact project reference and compare it to the Vercel Supabase URL. Identify a recent recoverable backup or arrange an approved backup. Use the project’s authenticated migration access. The app’s `SUPABASE_SERVICE_ROLE_KEY` is for server data operations and does not supply SQL migration credentials.
 2. Inspect the remote schema and migration history through the exact selected target. Confirm the two original Marketplace migrations and image Storage setup already exist. Confirm which payment migrations, if any, are recorded and which objects exist. Compare any preexisting objects with the reviewed files before deciding what to apply. A schema/history mismatch requires diagnosis before writes.
@@ -81,7 +81,7 @@ node --env-file=.env.local --import=tsx scripts/classify-marketplace-demos.ts --
 
 ## 4. Configure Vercel and register the preview webhook
 
-The existing Supabase and session variables are present in both Vercel environments. Preview has the Marketplace and Stripe settings for the project owner's sandbox and is deployed with payments off. Set the Production values separately at cutover. A Vercel environment change requires a new deployment to take effect. [Vercel environment configuration](https://vercel.com/docs/environment-variables)
+The existing Supabase and session variables are present in both Vercel environments. Preview has the Marketplace and Stripe settings for the project owner's sandbox and has payments enabled. Set the Production values separately at cutover. A Vercel environment change requires a new deployment to take effect. [Vercel environment configuration](https://vercel.com/docs/environment-variables)
 
 | Variable | Where it comes from and what to enter |
 | --- | --- |

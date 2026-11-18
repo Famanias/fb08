@@ -34,6 +34,7 @@ async function setup(docker) {
     '20261117004434_marketplace_payments.sql', '20261117004437_marketplace_payment_functions.sql',
     '20261117095439_marketplace_payment_reconciliation.sql', '20261117102524_marketplace_payment_presentation.sql',
     '20261118151539_marketplace_account_sellers.sql',
+    '20261118223225_marketplace_connect_v2_account_creation.sql',
   ]) sql(readFileSync(`supabase/migrations/${name}`, 'utf8'));
   sql('grant select, insert, delete on public.board_users to service_role;');
   const extraEnv = { PGRST_JWT_SECRET: randomBytes(48).toString('base64url') };

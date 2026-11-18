@@ -4,12 +4,16 @@ import { validUuid } from '../../../features/marketplace/validation';
 
 // Official stripe@23.1.0 (Node >=20). Keep snapshot webhook version identical.
 export const STRIPE_API_VERSION = '2026-10-28.endive' satisfies Stripe.LatestApiVersion;
+const ACCOUNT_CREATION_API_VERSION = '2026-11-18.endive';
 export type OnboardingSdk = {
   accounts: {
     create(params: Stripe.AccountCreateParams, options: Stripe.RequestOptions): Promise<Stripe.Account>;
     retrieve(id: string, params: Stripe.AccountRetrieveParams, options: Stripe.RequestOptions): Promise<Stripe.Account | Stripe.DeletedAccount>;
   };
   accountLinks: { create(params: Stripe.AccountLinkCreateParams, options: Stripe.RequestOptions): Promise<Stripe.AccountLink> };
+  v2?: { core: { accounts: {
+    create(params: Stripe.V2.Core.AccountCreateParams, options: Stripe.RequestOptions): Promise<Pick<Stripe.V2.Core.Account, 'id' | 'livemode' | 'metadata'>>;
+  } } };
 };
 export type PaymentSdk = OnboardingSdk & {
   checkout: { sessions: {
@@ -28,7 +32,7 @@ export function assertCheckoutUrl(value: string): void {
   if (url.protocol !== 'https:' || url.hostname !== 'checkout.stripe.com' || url.port || url.username || url.password) throw new Error('Checkout unavailable.');
 }
 export function createStripeGateway(config: { secretKey: string; tenant: string; country: string; origin: string; webhookSecret?: string }, injected?: PaymentSdk, now: () => Date = () => new Date()): StripeGateway {
-  // Lazy: status/logout can construct dependencies without Stripe/email settings.
+  // Signed-out status can be served without constructing a Stripe client.
   let sdk = injected;
   function client(): PaymentSdk {
     if (!/^sk_test_[A-Za-z0-9]+$/.test(config.secretKey) || !/^[A-Z]{2}$/.test(config.country)) throw new Error('Payment configuration unavailable.');
@@ -41,8 +45,24 @@ export function createStripeGateway(config: { secretKey: string; tenant: string;
   }
   return {
     async ensureAccount(seller, createKey) {
-      if (seller.tenant !== config.tenant || !validUuid(seller.id) || !createKey || createKey.length > 255) throw new Error('Account unavailable.');
-      const account = await client().accounts.create({ country: config.country, controller: { fees: { payer: 'account' }, losses: { payments: 'stripe' }, requirement_collection: 'stripe', stripe_dashboard: { type: 'full' } }, capabilities: { card_payments: { requested: true } }, metadata: { fb08_app: 'marketplace-payments-v1', tenant: config.tenant, seller_id: seller.id } }, { ...bounded, idempotencyKey: createKey });
+      if (seller.tenant !== config.tenant || !validUuid(seller.id) || !/:(v1|v2)$/.test(createKey) || createKey.length > 255) throw new Error('Account unavailable.');
+      const api = client();
+      const metadata = { fb08_app: 'marketplace-payments-v1', tenant: config.tenant, seller_id: seller.id };
+      const options = { ...bounded, idempotencyKey: createKey };
+      let account: { id: string; metadata?: Record<string, string> | null };
+      if (createKey.endsWith(':v2')) {
+        if (!api.v2) throw new Error('Account unavailable.');
+        const merchant = await api.v2.core.accounts.create({
+          identity: { country: config.country }, dashboard: 'full',
+          defaults: { responsibilities: { fees_collector: 'stripe', losses_collector: 'stripe' } },
+          configuration: { merchant: { capabilities: { card_payments: { requested: true } } } },
+          metadata,
+        }, { ...options, apiVersion: ACCOUNT_CREATION_API_VERSION });
+        if (merchant.livemode !== false) throw new Error('Account unavailable.');
+        account = merchant;
+      } else {
+        account = await api.accounts.create({ country: config.country, controller: { fees: { payer: 'account' }, losses: { payments: 'stripe' }, requirement_collection: 'stripe', stripe_dashboard: { type: 'full' } }, capabilities: { card_payments: { requested: true } }, metadata }, options);
+      }
       accountId(account.id);
       if (account.metadata?.fb08_app !== 'marketplace-payments-v1' || account.metadata.tenant !== config.tenant || account.metadata.seller_id !== seller.id) throw new Error('Account unavailable.');
       return { accountId: account.id };
