@@ -178,3 +178,19 @@
 @media (max-width: 780px) { .marketplace .marketplace-help { margin-left: 0; } .marketplace .field-input { font-size: 16px; } }
 @media (max-width: 560px) { .marketplace .search-top { flex-wrap: wrap; } .marketplace .search-field { flex-basis: 100%; } .marketplace .toolbar-right { max-width: 100%; } .marketplace .category-tabs { max-width: 100%; } }
 @media (prefers-reduced-motion: reduce) { .marketplace *, .marketplace *::before, .marketplace *::after { scroll-behavior: auto !important; transition: none !important; } .marketplace .product-card:hover { transform: none; } }
+
+/* Compact sandbox payment controls share the existing Marketplace forms and palette. */
+.marketplace .payment-box{border:1px solid #cbd4e4;background:#f5f7fb;padding:12px;margin:18px 0}
+.marketplace .payment-notice{font-weight:bold;color:#435d82;line-height:1.5}
+.marketplace .payment-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:12px 0}
+.marketplace .payment-actions button{white-space:normal}
+.marketplace .payment-code{max-width:180px;font-variant-numeric:tabular-nums;letter-spacing:.12em}
+.marketplace .payment-amounts{font-variant-numeric:tabular-nums}
+.marketplace .listing-payment{font-size:10px;line-height:1.45;color:#435d82;margin:6px 0 0}
+.marketplace .sandbox-option{display:flex;align-items:flex-start;gap:7px;line-height:1.5}
+.marketplace .sandbox-option input{margin-top:3px;flex-shrink:0}
+.marketplace button:disabled{cursor:not-allowed;opacity:.65}
+.marketplace .panel-title h2{overflow-wrap:anywhere}
+.marketplace .mobile-payments-link{display:none}
+@media(max-width:780px){.marketplace .mobile-payments-link{display:block;margin:0 0 14px;font-size:12px}}
+@media(max-width:480px){.marketplace .payment-amounts{grid-template-columns:1fr}.marketplace .payment-amounts dd{margin:0 0 8px}}

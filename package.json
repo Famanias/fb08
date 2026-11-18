@@ -7,10 +7,14 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "test": "tsx --test lib/server/auth.test.ts lib/server/board-routes.test.ts lib/server/profile-routes.test.ts features/board/board-rules.test.ts features/board/board-service.test.ts features/profile/profile-rules.test.ts features/marketplace/validation.test.ts lib/server/marketplace-image.test.ts lib/server/marketplace-handlers.test.ts",
+    "test": "tsx --test lib/server/auth.test.ts lib/server/board-routes.test.ts lib/server/profile-routes.test.ts features/board/board-rules.test.ts features/board/board-service.test.ts features/profile/profile-rules.test.ts features/marketplace/validation.test.ts lib/server/marketplace-image.test.ts lib/server/marketplace-handlers.test.ts features/marketplace/payments/rules.test.ts scripts/classify-marketplace-demos.test.ts lib/server/marketplace-payments/store.test.ts lib/server/marketplace-payments/proof.test.ts lib/server/marketplace-payments/seller-handlers.test.ts lib/server/marketplace-payments/seller-mailer.test.ts lib/server/marketplace-payments/config.test.ts lib/server/marketplace-payments/stripe-gateway.test.ts lib/server/marketplace-payments/connect-handlers.test.ts lib/server/marketplace-payments/checkout-handlers.test.ts lib/server/marketplace-payments/reconcile.test.ts lib/server/marketplace-payments/webhook-handler.test.ts scripts/reconcile-marketplace-payments.test.ts lib/server/marketplace-store.test.ts lib/server/marketplace-payments/order-handlers.test.ts lib/server/marketplace-payments/availability.test.ts features/marketplace/payments/presentation.test.ts features/marketplace/payments/order-monitor.test.ts scripts/verify-marketplace-payments.test.ts scripts/marketplace-local-harness.test.cjs",
     "clean": "next clean",
     "typecheck": "tsc --noEmit",
-    "test:marketplace:live": "node --env-file=.env.local --import=tsx scripts/verify-marketplace.ts"
+    "test:marketplace:live": "node --env-file=.env.local --import=tsx scripts/verify-marketplace.ts",
+    "test:marketplace:payments:db": "node --import=tsx scripts/test-marketplace-payments-db.ts",
+    "test:marketplace:payments:verify": "node --env-file=.env.local --import=tsx scripts/verify-marketplace-payments.ts",
+    "test:marketplace:payments:local": "node scripts/run-marketplace-payments-local.cjs",
+    "test:marketplace:payments:privacy": "node scripts/run-marketplace-payments-local.cjs --privacy"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
@@ -26,6 +30,7 @@
     "react": "^19.2.1",
     "react-dom": "^19.2.1",
     "sharp": "0.35.5",
+    "stripe": "23.1.0",
     "tailwind-merge": "^3.3.1"
   },
   "devDependencies": {

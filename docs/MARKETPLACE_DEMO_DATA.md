@@ -42,3 +42,7 @@ Verified on the live site: 21 unique listing rows and 21 successfully decoded Su
 | [Demo] Study Book Stack | Books | 480.00 | [alleksana](https://www.pexels.com/photo/stack-of-books-against-white-background-4284791/) |
 | [Demo] Brown Day Backpack | Other | 590.00 | [Deybson Mallony](https://www.pexels.com/photo/brown-backpack-hanging-on-a-wall-9448166/) |
 | [Demo] Guitar Practice Bundle | Other | 3100.00 | [Pexels contributor](https://www.pexels.com/photo/close-up-photo-of-a-wooden-acoustic-guitar-near-a-musical-composition-9717785/) |
+
+## Payment classification
+
+Existing demo rows remain inquiry-only. See the [payment runbook](MARKETPLACE_PAYMENTS.md) for the dry-run exact-manifest classifier and the separately explicit `--apply`. A title beginning `[Demo]` does not establish inventory kind or authorize reclassification. Only new, explicitly opted-in fictional sandbox listings, bound to this deployment tenant and a verified seller, can become purchasable. The original image/source manifest remains unchanged.

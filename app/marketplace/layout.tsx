@@ -11,6 +11,7 @@ export default function MarketplaceLayout({ children }: { children: React.ReactN
     <div className="heading-bar"><div><div className="tiny-crumbs"><Link href="/">fb/08</Link> &nbsp;›&nbsp; Community &nbsp;›&nbsp; Marketplace</div>
       <h1 className="page-title"><span className="market-icon"><Store size={24} aria-hidden="true" /></span>Marketplace</h1><p className="page-subtitle">Buy, sell, and swap something good with your corner of the internet.</p></div>
       <Link className="green-btn" href="/marketplace/new"><Plus size={13} aria-hidden="true" />Post a Listing</Link></div>
+    <p className="mobile-payments-link"><Link href="/marketplace/payments">Seller payments</Link></p>
     <div className="board-layout"><Suspense><MarketplaceSidebar /></Suspense><main className="main-panel">{children}</main>
       <aside className="right-rail" aria-label="Marketplace information">
         <section className="right-panel"><h3>Community classifieds</h3><p>Seven categories. One corner of the internet.</p><p>Free to post. No account required.</p></section>

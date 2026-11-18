@@ -1,0 +1,21 @@
+import { randomBytes } from 'node:crypto';
+import type { CanonicalCheckout, PaymentDeps, PaymentStore, StoredOrder } from './contracts';
+export function paymentFixture() {
+  const order: StoredOrder = { id: '11111111-1111-4111-8111-111111111111', tenant: 'local', listingId: '22222222-2222-4222-8222-222222222222', sellerId: '33333333-3333-4333-8333-333333333333', accountId: 'acct_fixture', buyerAccessHash: 'private', readExpiresAt: '2026-11-24T00:00:00Z', submissionKey: '44444444-4444-4444-8444-444444444444', state: 'open', title: 'Fictional item', grossMinor: 123450, feeMinor: 12345, currency: 'php', livemode: false, sessionId: 'cs_test_fixture', paymentIntentId: null, createKey: 'local:checkout:11111111-1111-4111-8111-111111111111:v1', checkoutExpiresAt: 1794875460, preparedAt: '2026-11-17T00:00:00Z', stripeApiVersion: '2026-10-28.endive', createParams: {} };
+  const metadata = { fb08_app: 'marketplace-payments-v1', tenant: 'local', order_id: order.id, listing_id: order.listingId };
+  let canonical: CanonicalCheckout = { sessionId: order.sessionId!, accountId: order.accountId, paymentIntentId: 'pi_fixture', status: 'complete', paymentStatus: 'paid', intentStatus: 'succeeded', livemode: false, currency: 'php', grossMinor: 123450, feeMinor: 12345, quantity: 1, intentAmountReceivedMinor: 123450, intentCurrency: 'php', url: null, expiresAt: order.checkoutExpiresAt, clientReferenceId: order.id, metadata, intentMetadata: metadata };
+  const writes: unknown[] = []; const reads: string[] = []; let outcome: 'paid' | 'expired' | 'held' | 'duplicate' | 'review' = 'paid';
+  const account = { sellerId: order.sellerId, accountId: order.accountId, ready: true, connection: 'ready' as const, checkedAt: order.preparedAt, accountCreateKey: 'opaque' };
+  const unused = async (): Promise<never> => { throw new Error('Unexpected operation'); };
+  const store: PaymentStore = { getPublicPaymentStates: unused, findListingPaymentAccount: unused, getOrderConfirmation: unused, consumeRate: unused, findSeller: unused, issueChallenge: unused, findChallenge: unused, consumeChallenge: unused, findSellerSession: unused, revokeSellerSession: unused, findSellerAccount: unused, ensureSellerAccountSlot: unused, saveSellerAccount: unused, findSellerConnection: unused, reserve: unused, findCheckoutReservation: unused, prepareCheckout: unused, attachSession: unused, findInventory: unused, inspectInventory: unused, findPaidWebhookReceipt: unused, listReconciliationOrders: unused,
+    async findOrder(id, tenant) { return id === order.id && tenant === order.tenant ? { ...order } : null; },
+    async findAccountById(id, tenant) { return id === order.accountId && tenant === order.tenant ? account : null; },
+    async acquireAccountRefresh() { writes.push('lease'); return true; }, async saveAccountReadiness(_a, _t, _l, r) { writes.push(r); return true; },
+    async applyCheckout(input) { writes.push(input); if (outcome === 'paid') { order.state = 'paid'; order.sessionId = input.canonical.sessionId; order.paymentIntentId = input.canonical.paymentIntentId; } return outcome; }, async saveSettlement(_id, _tenant, value) { writes.push(value); },
+  };
+  const deps: PaymentDeps = { store, context: { tenant: 'local', origin: 'https://market.example.invalid', enabled: false }, secret: 'fictional-secret-at-least-32-characters', now: () => new Date('2026-11-17T00:00:00Z'), randomBytes, mailer: { sendCode: unused }, stripe: { ensureAccount: unused, onboardingLink: unused, createCheckout: unused, verifyEvent: () => { throw new Error('Unsigned'); },
+    async readAccount(id) { reads.push(id); return { accountId: id, ready: false, connection: 'restricted', metadata: { fb08_app: 'marketplace-payments-v1', tenant: 'local', seller_id: order.sellerId }, checkedAt: deps.now().toISOString() }; },
+    async readCheckout(_o, id) { reads.push(id ?? order.sessionId!); return canonical; }, async expireCheckout() { reads.push('expire'); return canonical; }, async readSettlement() { reads.push('settlement'); return null; },
+  } };
+  return { order, deps, writes, reads, canonical: () => canonical, setCanonical: (patch: Partial<CanonicalCheckout>) => { canonical = { ...canonical, ...patch }; }, setOutcome: (value: typeof outcome) => { outcome = value; } };
+}

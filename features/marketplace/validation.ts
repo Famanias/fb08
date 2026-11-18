@@ -17,10 +17,13 @@ function email(value: unknown, field: string) {
 }
 export function validUuid(value: unknown): value is string { return typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value); }
 export function validateListing(input: Record<string, unknown>): CreateListingInput {
+  const inventoryKind = input.inventoryKind ?? 'ordinary';
+  if (inventoryKind !== 'ordinary' && inventoryKind !== 'sandbox') throw new MarketplaceError('Choose a valid inventory kind.', 400, 'inventoryKind');
+  if ('paymentTenant' in input || 'payment_tenant' in input || 'tenant' in input) throw new MarketplaceError('Invalid listing details.');
   const price = text(input.price, 'price', 12);
   if (!/^\d{1,9}(\.\d{1,2})?$/.test(price)) throw new MarketplaceError('Enter a price from ₱0 to ₱999,999,999.99 with at most two decimals.', 400, 'price');
   if (!CATEGORIES.includes(input.category as MarketplaceCategory)) throw new MarketplaceError('Choose a valid category.', 400, 'category');
-  return { title: text(input.title, 'title', 100), description: text(input.description, 'description', 2000), price, category: input.category as MarketplaceCategory, sellerEmail: email(input.sellerEmail, 'sellerEmail'), sellerDisplayName: text(input.sellerDisplayName, 'sellerDisplayName', 50, true) || 'Guest Seller' };
+  return { title: text(input.title, 'title', 100), description: text(input.description, 'description', 2000), price, category: input.category as MarketplaceCategory, sellerEmail: email(input.sellerEmail, 'sellerEmail'), sellerDisplayName: text(input.sellerDisplayName, 'sellerDisplayName', 50, true) || 'Guest Seller', inventoryKind };
 }
 export function validateInquiry(input: Record<string, unknown>): InquiryInput {
   if (!validUuid(input.listingId)) throw new MarketplaceError('Listing not found.', 404);
@@ -37,5 +40,5 @@ export function parseFilters(params: URLSearchParams): ListingFilters {
   return { q, category: category as ListingFilters['category'], sort: sort as ListingFilters['sort'], page: Number(pageValue) };
 }
 export function publicListing(row: Record<string, unknown>, imageUrl: string): PublicListing {
-  return { id: String(row.id), title: String(row.title), description: String(row.description), price: Number(row.price), currency: 'PHP', category: row.category as MarketplaceCategory, sellerDisplayName: String(row.seller_display_name), imageUrl, createdAt: String(row.created_at), status: row.status as PublicListing['status'] };
+  return { id: String(row.id), title: String(row.title), description: String(row.description), price: Number(row.price), currency: 'PHP', category: row.category as MarketplaceCategory, sellerDisplayName: String(row.seller_display_name), imageUrl, createdAt: String(row.created_at), status: row.status as PublicListing['status'], inventoryKind: (row.inventory_kind ?? 'ordinary') as PublicListing['inventoryKind'], paymentState: { sandbox: row.inventory_kind === 'sandbox', availability: row.status === 'sold' ? 'sold' : 'unavailable' } };
 }

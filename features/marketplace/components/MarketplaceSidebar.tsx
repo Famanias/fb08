@@ -10,6 +10,7 @@ export function MarketplaceSidebar() {
     <section className="side-block"><h2 className="side-head">Marketplace</h2>
       <Link className={`side-link${pathname === '/marketplace' ? ' active' : ''}`} href="/marketplace"><span>▦ &nbsp; Browse Listings</span></Link>
       <Link className={`side-link${pathname === '/marketplace/new' ? ' active' : ''}`} href="/marketplace/new"><span>＋ &nbsp; Post an Item</span></Link>
+      <Link className={`side-link${pathname.startsWith('/marketplace/payments') ? ' active' : ''}`} href="/marketplace/payments">Seller payments</Link>
       <a className="side-link" href="#marketplace-help">How Marketplace works</a>
     </section>
     <section className="side-block"><h2 className="side-head">Categories</h2>{CATEGORIES.map(item => {

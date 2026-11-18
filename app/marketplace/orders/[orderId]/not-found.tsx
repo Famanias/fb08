@@ -1,0 +1,1 @@
+export default function OrderUnavailable() { return <div className="error-box" role="alert">Order unavailable. Use the browser where you started this order. Access expires after seven days; a lost cookie cannot be recovered here.</div>; }

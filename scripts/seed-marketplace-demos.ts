@@ -6,15 +6,12 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import sharp from 'sharp';
 import inventory from './marketplace-demo-listings.json';
-import { validateListing } from '../features/marketplace/validation';
+import { expectedDemoRows, fixtureId } from './lib/marketplace-demo-fixtures';
+import { classifyMarketplaceDemos, demoDatabase } from './classify-marketplace-demos';
 import { createMarketplaceStore } from '../lib/server/marketplace-store';
 import { getSupabaseAdminClient } from '../lib/server/supabase-admin';
 
 const cache = path.resolve('.superpowers/marketplace-demo-photos');
-function fixtureId(namespace: string, slug: string) {
-  const hash = createHash('sha256').update(`fb08-stock-demo-v1:${namespace}:${slug}`).digest('hex');
-  return `${hash.slice(0, 8)}-${hash.slice(8, 12)}-4${hash.slice(13, 16)}-8${hash.slice(17, 20)}-${hash.slice(20, 32)}`;
-}
 async function photo(photoId: number): Promise<Buffer> {
   const filename = path.join(cache, `${photoId}.webp`);
   try { return await readFile(filename); } catch { /* First run downloads the curated stock photo. */ }
@@ -36,7 +33,9 @@ async function main() {
   // Complete every download and validation before publishing any row.
   const prepared = [];
   for (const item of inventory) {
-    const input = validateListing({ title: item.title, category: item.category, price: item.price, sellerDisplayName: item.seller, sellerEmail: 'marketplace-demo@example.invalid', description: `DEMO LISTING — NOT FOR SALE. This is fictional sample inventory with a stock photograph. No real seller or item is represented.\n\n${item.description}\n\nStock photo: ${item.photographer} / Pexels\nSource: ${item.source}\nLicense: https://www.pexels.com/license/` });
+    const expected = expectedDemoRows().find(row => row.id === fixtureId('listing', item.slug))!;
+    const { id: _id, imagePath: _path, ...fields } = expected;
+    const input = { ...fields, inventoryKind: 'ordinary' as const };
     prepared.push({ item, input, image: await photo(item.photoId), id: fixtureId('listing', item.slug), key: fixtureId('request', item.slug) });
     console.log(`Prepared ${item.slug}`);
   }
@@ -61,6 +60,7 @@ async function main() {
     }
     manifest.push({ id: entry.id, title: entry.input.title, imagePath, source: entry.item.source });
   }
+  await classifyMarketplaceDemos(demoDatabase(db), true);
   await writeFile(path.join(cache, 'published.json'), JSON.stringify(manifest, null, 2));
   const check = await db.from('marketplace_listings').select('id', { count: 'exact' }).in('id', manifest.map(item => item.id));
   if (check.error || check.count !== prepared.length) throw new Error('Could not confirm all sample rows.');

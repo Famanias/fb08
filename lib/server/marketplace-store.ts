@@ -1,16 +1,19 @@
 import { getSupabaseAdminClient } from './supabase-admin';
 import { PAGE_SIZE, type CreateListingInput, type InquiryInput, type ListingFilters, type ListingPage, type PublicListing } from '@/features/marketplace/types';
 import { MarketplaceError, publicListing } from '@/features/marketplace/validation';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import { createPaymentStore } from './marketplace-payments/store';
+import { getPaymentConfig } from './marketplace-payments/config';
 
 const BUCKET = 'marketplace-images';
-const PUBLIC_COLUMNS = 'id,title,description,price,currency,category,seller_display_name,image_path,status,created_at';
+const PUBLIC_COLUMNS = 'id,title,description,price,currency,category,seller_display_name,image_path,status,created_at,inventory_kind';
 export interface MarketplaceStore {
   browse(filters: ListingFilters): Promise<ListingPage>;
   find(id: string): Promise<PublicListing | null>;
   consumeRate(actor: string, action: string, limit: number): Promise<boolean>;
   upload(path: string, bytes: Buffer): Promise<void>;
   cleanup(path: string): Promise<void>;
-  publish(key: string, fingerprint: string, id: string, path: string, input: CreateListingInput): Promise<string>;
+  publish(key: string, fingerprint: string, id: string, path: string, input: CreateListingInput, paymentTenant?: string): Promise<string>;
   inquire(key: string, fingerprint: string, input: InquiryInput): Promise<string>;
 }
 function databaseError(error: { message: string } | null) {
@@ -19,18 +22,23 @@ function databaseError(error: { message: string } | null) {
   if (error.message.includes('listing_unavailable')) throw new MarketplaceError('This listing is no longer available.', 404);
   throw new MarketplaceError('Marketplace is temporarily unavailable. Please try again.', 503);
 }
-export function createMarketplaceStore(): MarketplaceStore {
-  const db = getSupabaseAdminClient();
+export function createMarketplaceStore(db: SupabaseClient = getSupabaseAdminClient()): MarketplaceStore {
   const hydrate = (row: Record<string, unknown>) => publicListing(row, db.storage.from(BUCKET).getPublicUrl(String(row.image_path)).data.publicUrl);
   return {
     async browse(filters) {
       const { data, error } = await db.rpc('marketplace_browse', { p_q: filters.q, p_category: filters.category, p_sort: filters.sort, p_page: filters.page });
       databaseError(error);
       if (!data || !Array.isArray(data.listings) || typeof data.total !== 'number') throw new MarketplaceError('Could not load listings. Please try again.', 503);
-      return { listings: data.listings.map(hydrate), total: data.total, hasMore: (filters.page + 1) * PAGE_SIZE < data.total };
+      const listings: PublicListing[] = data.listings.map(hydrate);
+      try {
+        const context = getPaymentConfig(process.env);
+        const states = await createPaymentStore(db).getPublicPaymentStates(listings.map(item => item.id), context);
+        for (const listing of listings) listing.paymentState = states[listing.id] ?? listing.paymentState;
+      } catch { /* Missing configuration/cache is unavailable; ordinary browse remains usable. */ }
+      return { listings, total: data.total, hasMore: (filters.page + 1) * PAGE_SIZE < data.total };
     },
     async find(id) {
-      const { data, error } = await db.from('marketplace_listings').select(PUBLIC_COLUMNS).eq('id', id).eq('status', 'active').maybeSingle();
+      const { data, error } = await db.from('marketplace_listings').select(PUBLIC_COLUMNS).eq('id', id).in('status', ['active', 'sold']).maybeSingle();
       databaseError(error);
       return data ? hydrate(data) : null;
     },
@@ -48,8 +56,8 @@ export function createMarketplaceStore(): MarketplaceStore {
       const { data, error } = await db.from('marketplace_listings').select('id').eq('image_path', path).maybeSingle();
       if (!error && !data) await db.storage.from(BUCKET).remove([path]);
     },
-    async publish(key, fingerprint, id, path, input) {
-      const { data, error } = await db.rpc('marketplace_publish', { p_key: key, p_fingerprint: fingerprint, p_id: id, p_image_path: path, p_input: input });
+    async publish(key, fingerprint, id, path, input, paymentTenant) {
+      const { data, error } = await db.rpc('marketplace_publish', { p_key: key, p_fingerprint: fingerprint, p_id: id, p_image_path: path, p_input: { ...input, ...(paymentTenant === undefined ? {} : { paymentTenant }) } });
       databaseError(error);
       if (typeof data !== 'string') throw new MarketplaceError('Could not confirm publication. Please retry.', 503);
       return data;
