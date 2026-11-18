@@ -1,10 +1,15 @@
 import { createHmac, randomUUID } from 'node:crypto';
 import { MarketplaceError, parseFilters, validateInquiry, validateListing, validUuid } from '@/features/marketplace/validation';
-import { createMarketplaceStore, type MarketplaceStore } from './marketplace-store';
+import { createMarketplaceStore, type MarketplaceStore, type SandboxListingOwner } from './marketplace-store';
 import { prepareImage } from './marketplace-image';
-import { jsonResponse } from './route-helpers';
+import { getAuthenticatedUser, jsonResponse } from './route-helpers';
 
-type Deps = { store?: MarketplaceStore; secret?: string; paymentTenant?: string };
+type Deps = {
+  store?: MarketplaceStore;
+  secret?: string;
+  paymentTenant?: string;
+  authenticateUser?: (req: Request) => Promise<{ id: string } | null>;
+};
 async function safe(run: () => Promise<Response>) {
   try { return await run(); } catch (error) {
     if (error instanceof MarketplaceError) return jsonResponse({ error: error.message, field: error.field }, error.status, error.status === 429 ? { 'Retry-After': '3600' } : undefined);
@@ -61,19 +66,25 @@ export async function handleCreate(req: Request, deps: Deps = {}) {
     catch { throw new MarketplaceError('Could not read the listing form.'); }
     if (form.get('website')) throw new MarketplaceError('Unable to accept this submission.');
     const input = validateListing(Object.fromEntries(form.entries()));
-    const paymentTenant = input.inventoryKind === 'sandbox' ? deps.paymentTenant ?? process.env.MARKETPLACE_PAYMENT_TENANT : undefined;
-    if (input.inventoryKind === 'sandbox' && (!paymentTenant || !/^[a-zA-Z0-9_-]{1,100}$/.test(paymentTenant))) throw new MarketplaceError('Sandbox listings are temporarily unavailable.', 503);
+    let owner: SandboxListingOwner | undefined;
+    if (input.inventoryKind === 'sandbox') {
+      const user = await (deps.authenticateUser ?? getAuthenticatedUser)(req);
+      if (!user) throw new MarketplaceError('Sign in to fb/08 to publish a sandbox listing.', 401);
+      const tenant = deps.paymentTenant ?? process.env.MARKETPLACE_PAYMENT_TENANT;
+      if (!tenant || !/^[a-zA-Z0-9_-]{1,100}$/.test(tenant)) throw new MarketplaceError('Sandbox listings are temporarily unavailable.', 503);
+      owner = { tenant, userId: user.id };
+    }
     const photo = form.get('photo');
     if (!(photo instanceof File)) throw new MarketplaceError('Please upload a photo of your item.', 400, 'photo');
     const store = deps.store ?? createMarketplaceStore();
     await rateLimit(req, store, 'listing', secret);
     const image = await prepareImage(photo);
-    // Preserve pre-payment ordinary request fingerprints across upgrades. Sandbox remains explicit.
+    // Ordinary retries keep their original fingerprint. Sandbox retries bind the same owner and tenant.
     const { inventoryKind, ...legacyInput } = input;
-    const fingerprint = hash(JSON.stringify(inventoryKind === 'ordinary' ? legacyInput : input) + hash(image, secret), secret);
+    const fingerprint = hash(JSON.stringify(inventoryKind === 'ordinary' ? legacyInput : { ...input, owner }) + hash(image, secret), secret);
     const id = randomUUID(); const path = `listings/${id}.webp`;
     await store.upload(path, image);
-    const result = await store.publish(key, fingerprint, id, path, input, paymentTenant);
+    const result = await store.publish(key, fingerprint, id, path, input, owner);
     // Only a confirmed RPC completion makes immediate cleanup safe. On a lost
     // response its transaction may still be committing; retain the image for
     // the age-gated orphan reconciler instead of racing that transaction.

@@ -86,7 +86,7 @@ export function AccountSidebar({
   }
 
   return (
-    <aside className="sidebar-left" aria-label="Account and active threads">
+    <aside id="account" className="sidebar-left" aria-label="Account and active threads">
       <div className="board-box">
         <div className="board-box-head">
           <span>Account</span>

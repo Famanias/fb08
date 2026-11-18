@@ -70,15 +70,28 @@ test('publication uploads a decoded image, saves atomically and cleans up unused
   assert.deepEqual(await response.json(), { id: ID });
   assert.deepEqual(deps.calls, ['rate', 'upload', 'publish', 'cleanup']);
 });
-test('sandbox publication uses only server tenant and fingerprints inventory kind', async () => {
-  const deps = fixture(); const calls: Array<{ fingerprint: string; kind: string; tenant?: string }> = [];
-  deps.store.publish = async (_key, fingerprint, _id, _path, input, tenant) => { calls.push({ fingerprint, kind: input.inventoryKind, tenant }); return ID; };
-  assert.equal((await handleCreate(await createRequest(), { ...deps, paymentTenant: 'local' })).status, 201);
-  assert.equal((await handleCreate(await createRequest({ inventoryKind: 'sandbox' }), { ...deps, paymentTenant: 'local' })).status, 201);
-  assert.equal(calls[0].tenant, undefined); assert.equal(calls[1].tenant, 'local');
-  assert.notEqual(calls[0].fingerprint, calls[1].fingerprint);
-  assert.equal((await handleCreate(await createRequest({ inventoryKind: 'sandbox', paymentTenant: 'forged' }), deps)).status, 400);
-  assert.equal(calls.length, 2);
+test('signed-out sandbox publication stops before storage or persistence', async () => {
+  const deps = { ...fixture(), paymentTenant: 'local', authenticateUser: async () => null };
+  assert.equal((await handleCreate(await createRequest({ inventoryKind: 'sandbox' }), deps)).status, 401);
+  assert.deepEqual(deps.calls, []);
+});
+test('sandbox publication binds the server session and fingerprints the owner', async () => {
+  const ownerId = 'a93628b8-10dc-43ff-98ea-a8147d3d253f';
+  const otherId = 'fe600332-5f04-4a8a-93e5-a744542fa5ba';
+  let userId = ownerId;
+  const deps = { ...fixture(), paymentTenant: 'local', authenticateUser: async () => ({ id: userId }) };
+  const calls: Array<{ fingerprint: string; owner: unknown }> = [];
+  deps.store.publish = async (_key, fingerprint, _id, _path, _input, owner) => { calls.push({ fingerprint, owner }); return ID; };
+  assert.equal((await handleCreate(await createRequest(), deps)).status, 201);
+  assert.equal((await handleCreate(await createRequest({ inventoryKind: 'sandbox' }), deps)).status, 201);
+  userId = otherId;
+  assert.equal((await handleCreate(await createRequest({ inventoryKind: 'sandbox' }), deps)).status, 201);
+  assert.deepEqual(calls.map(call => call.owner), [undefined, { tenant: 'local', userId: ownerId }, { tenant: 'local', userId: otherId }]);
+  assert.equal(new Set(calls.map(call => call.fingerprint)).size, 3);
+  for (const field of ['paymentTenant', 'ownerUserId']) {
+    assert.equal((await handleCreate(await createRequest({ inventoryKind: 'sandbox', [field]: ownerId }), deps)).status, 400);
+  }
+  assert.equal(calls.length, 3);
 });
 
 test('ordinary publication retry preserves the pre-inventory-kind fingerprint and original request key', async () => {
@@ -96,7 +109,7 @@ test('ordinary publication retry preserves the pre-inventory-kind fingerprint an
   const response = await handleCreate(request, deps);
   assert.equal(response.status, 201); assert.deepEqual(await response.json(), { id: ID });
   assert.equal((await handleCreate(await createRequest({ inventoryKind: 'ordinary' }), deps)).status, 201);
-  assert.equal((await handleCreate(await createRequest({ inventoryKind: 'sandbox' }), { ...deps, paymentTenant: 'local' })).status, 409, 'sandbox cannot reuse an ordinary request fingerprint');
+  assert.equal((await handleCreate(await createRequest({ inventoryKind: 'sandbox' }), { ...deps, paymentTenant: 'local', authenticateUser: async () => ({ id: ID }) })).status, 409, 'sandbox cannot reuse an ordinary request fingerprint');
 });
 test('ambiguous publication failure retains the photo until safe orphan reconciliation', async () => {
   const deps = fixture(); deps.store.publish = async () => { throw new Error('private@example.com'); };

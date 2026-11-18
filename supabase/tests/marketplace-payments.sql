@@ -28,9 +28,9 @@ insert into public.marketplace_listings(id,title,description,price,category,sell
 select ('10000000-0000-4000-8000-00000000000'||n)::uuid,'Test '||n,'Fictional local test',1234.50,'Other','Test','listings/10000000-0000-4000-8000-00000000000'||n||'.webp',
   case n when 1 then 'ordinary' when 2 then 'demo' else 'sandbox' end from generate_series(1,5) n;
 insert into public.marketplace_listing_contacts select id,'Test@Example.invalid' from public.marketplace_listings where id::text like '10000000-0000-4000-8000-00000000000%';
-insert into public.marketplace_payment_inventory(listing_id,tenant) select id,'local-test' from public.marketplace_listings
-where id in ('10000000-0000-4000-8000-000000000003','10000000-0000-4000-8000-000000000004','10000000-0000-4000-8000-000000000005');
 insert into public.marketplace_payment_sellers(id,tenant,email_normalized,verified_at) values('20000000-0000-4000-8000-000000000001','local-test','test@example.invalid',now());
+insert into public.marketplace_payment_inventory(listing_id,tenant,seller_id) select id,'local-test','20000000-0000-4000-8000-000000000001' from public.marketplace_listings
+where id in ('10000000-0000-4000-8000-000000000003','10000000-0000-4000-8000-000000000004','10000000-0000-4000-8000-000000000005');
 insert into public.marketplace_connected_accounts(tenant,seller_id,account_id,ready,connection,checked_at,account_create_key)
 values('local-test','20000000-0000-4000-8000-000000000001','acct_local',true,'ready',now(),'local-create');
 set local role service_role;

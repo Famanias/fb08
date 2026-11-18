@@ -4,7 +4,7 @@ import type Stripe from 'stripe';
 import { createStripeGateway, type PaymentSdk } from './stripe-gateway';
 import type { PreparedOrder } from './contracts';
 
-const seller = { id: '11111111-1111-4111-8111-111111111111', emailNormalized: 'private@example.invalid', tenant: 'local' };
+const seller = { id: '11111111-1111-4111-8111-111111111111', tenant: 'local' };
 function fixture(linkUrl = 'https://connect.stripe.com/setup/fixture') {
   let account = { id: 'acct_fixture', object: 'account', country: 'US', details_submitted: true, charges_enabled: true, payouts_enabled: true, capabilities: { card_payments: 'active' }, requirements: { disabled_reason: null, currently_due: [], past_due: [], pending_verification: [], errors: [] }, controller: { fees: { payer: 'account' }, losses: { payments: 'stripe' }, requirement_collection: 'stripe', stripe_dashboard: { type: 'full' } }, metadata: { fb08_app: 'marketplace-payments-v1', tenant: 'local', seller_id: seller.id } } as unknown as Stripe.Account;
   const calls: Array<{ method: string; params: unknown; options: unknown }> = [];

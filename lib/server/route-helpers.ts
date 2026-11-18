@@ -1,5 +1,5 @@
 import { SESSION_COOKIE_NAME, verifySessionToken } from './auth';
-import { BoardServerStore } from './board-store';
+import { createSupabaseBoardStore, type BoardServerStore } from './board-store';
 
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -57,7 +57,7 @@ export function readCookieValue(req: Request, name: string): string | null {
 
 export async function getAuthenticatedUser(
   req: Request,
-  store: BoardServerStore,
+  store?: Pick<BoardServerStore, 'findUserById'>,
   secretOverride?: string
 ): Promise<{ id: string; username: string } | null> {
   const token = readCookieValue(req, SESSION_COOKIE_NAME);
@@ -68,7 +68,7 @@ export async function getAuthenticatedUser(
   if (!verified) {
     return null;
   }
-  return store.findUserById(verified.userId);
+  return (store ?? createSupabaseBoardStore()).findUserById(verified.userId);
 }
 
 export async function withRouteError(run: () => Promise<Response>): Promise<Response> {

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { getPaymentConfig, getPaymentContext } from './config';
 import { createPaymentDeps } from './dependencies';
 
-const env = { MARKETPLACE_PAYMENTS_ENABLED: 'true', MARKETPLACE_PAYMENT_TENANT: 'preview-test', MARKETPLACE_APP_ORIGIN: 'https://market.example.invalid', MARKETPLACE_STRIPE_ACCOUNT_COUNTRY: 'US', STRIPE_SECRET_KEY: 'sk_test_fixture', NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: 'pk_test_fixture', STRIPE_WEBHOOK_SECRET: 'whsec_fixture', AUTH_SESSION_SECRET: 'fictional-test-session-secret-32-characters', RESEND_API_KEY: 're_fixture', MARKETPLACE_SELLER_EMAIL_FROM: 'verify@example.com' };
+const env = { MARKETPLACE_PAYMENTS_ENABLED: 'true', MARKETPLACE_PAYMENT_TENANT: 'preview-test', MARKETPLACE_APP_ORIGIN: 'https://market.example.invalid', MARKETPLACE_STRIPE_ACCOUNT_COUNTRY: 'US', STRIPE_SECRET_KEY: 'sk_test_fixture', NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: 'pk_test_fixture', STRIPE_WEBHOOK_SECRET: 'whsec_fixture', AUTH_SESSION_SECRET: 'fictional-test-session-secret-32-characters' };
 test('config_rejects_live_or_missing_configuration', () => {
   assert.equal(getPaymentConfig({}).enabled, false);
   assert.throws(() => getPaymentConfig({ MARKETPLACE_PAYMENTS_ENABLED: 'true' }));

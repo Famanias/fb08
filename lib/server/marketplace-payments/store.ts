@@ -61,29 +61,11 @@ export function createPaymentStore(db: SupabaseClient = getSupabaseAdminClient()
       return { orderId: String(row.orderId), listingId: String(row.listingId), title: String(row.title), status: row.status as OrderConfirmation['status'], currency: 'PHP', grossMinor: integer(row.grossMinor), applicationFeeMinor: integer(row.applicationFeeMinor), sellerBeforeProcessingMinor: integer(row.sellerBeforeProcessingMinor), sandbox: true };
     },
     async consumeRate(actor, action, limit) { return await rpc('marketplace_consume_rate', { p_actor: actor, p_action: action, p_limit: limit }) === true; },
-    async findSeller(emailNormalized, tenant) {
-      const { data, error } = await db.from('marketplace_payment_sellers').select('id,email_normalized,tenant').eq('tenant', tenant).eq('email_normalized', emailNormalized).maybeSingle(); checked(error);
-      return data ? { id: data.id, emailNormalized: data.email_normalized, tenant: data.tenant } : null;
-    },
-    async issueChallenge(input) {
-      await rpc('marketplace_issue_seller_challenge', { p_id: input.id, p_email: input.emailNormalized, p_tenant: input.tenant, p_browser_hash: input.browserHash, p_code_hash: input.codeHash, p_expires_at: input.expiresAt });
-    },
-    async findChallenge(id, tenant, browserHash, now) {
-      const { data, error } = await db.from('marketplace_seller_challenges').select('id,email_normalized,browser_nonce_hash,expires_at').eq('id', id).eq('tenant', tenant).eq('browser_nonce_hash', browserHash).is('consumed_at', null).lt('attempts', 5).gt('expires_at', now.toISOString()).maybeSingle(); checked(error);
-      return data ? { id: data.id, emailNormalized: data.email_normalized, browserHash: data.browser_nonce_hash, expiresAt: data.expires_at } : null;
-    },
-    async consumeChallenge(input) {
-      const data = await rpc('marketplace_consume_seller_challenge', { p_id: input.id, p_tenant: input.tenant, p_browser_hash: input.browserHash, p_candidate_hash: input.candidateHash, p_session_hash: input.sessionHash, p_now: input.now.toISOString() });
-      return data ? { id: data.id, emailNormalized: data.email_normalized, tenant: data.tenant } : null;
-    },
-    async findSellerSession(sessionHash, tenant, now) {
-      const { data, error } = await db.from('marketplace_seller_sessions').select('seller_id').eq('token_hash', sessionHash).eq('tenant', tenant).is('revoked_at', null).gt('expires_at', now.toISOString()).maybeSingle(); checked(error);
-      if (!data) return null;
-      const { data: seller, error: sellerError } = await db.from('marketplace_payment_sellers').select('id,email_normalized,tenant').eq('id', data.seller_id).eq('tenant', tenant).maybeSingle(); checked(sellerError);
-      return seller ? { id: seller.id, emailNormalized: seller.email_normalized, tenant: seller.tenant } : null;
-    },
-    async revokeSellerSession(sessionHash, tenant) {
-      const { error } = await db.from('marketplace_seller_sessions').update({ revoked_at: new Date().toISOString() }).eq('token_hash', sessionHash).eq('tenant', tenant).is('revoked_at', null); checked(error);
+    async findSellerForUser(userId, tenant) {
+      const { data, error } = await db.from('marketplace_payment_sellers')
+        .select('id,tenant').eq('tenant', tenant).eq('user_id', userId).maybeSingle();
+      checked(error);
+      return data ? { id: data.id, tenant: data.tenant } : null;
     },
     async findSellerAccount(sellerId, tenant) {
       const { data, error } = await db.from('marketplace_connected_accounts').select('seller_id,account_id,ready,connection,checked_at,account_create_key').eq('seller_id', sellerId).eq('tenant', tenant).not('account_id', 'is', null).maybeSingle(); checked(error);

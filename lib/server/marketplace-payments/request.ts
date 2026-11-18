@@ -26,6 +26,6 @@ export async function readPaymentJson(req: Request, maxBytes = 8192): Promise<Re
 }
 export function paymentErrorResponse(error: unknown): Response {
   const status = error instanceof MarketplaceError && [400, 401, 403, 404, 409, 413, 415, 429, 503].includes(error.status) ? error.status : 503;
-  const messages: Record<number, string> = { 400: 'Invalid or expired verification. Please try again.', 401: 'Verify your seller email to continue.', 403: 'Please submit from this website.', 404: 'Payment unavailable.', 409: 'Payment request conflicts with current state.', 413: 'The request is too large.', 415: 'Submit a JSON request.', 429: 'Too many attempts. Please try again in an hour.', 503: 'Payments are temporarily unavailable. Please try again.' };
+  const messages: Record<number, string> = { 400: 'Invalid payment request. Please try again.', 401: 'Sign in to fb/08 to manage payments.', 403: 'Please submit from this website.', 404: 'Payment unavailable.', 409: 'Payment request conflicts with current state.', 413: 'The request is too large.', 415: 'Submit a JSON request.', 429: 'Too many attempts. Please try again in an hour.', 503: 'Payments are temporarily unavailable. Please try again.' };
   return jsonResponse({ error: messages[status] }, status, status === 429 ? { 'Retry-After': '3600' } : undefined);
 }

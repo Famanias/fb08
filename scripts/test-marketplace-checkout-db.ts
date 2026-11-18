@@ -44,14 +44,14 @@ async function main() {
     },
     async retrieve(id, _params, options) { sessionReads++; assert.equal(options.stripeAccount, accountId); assert.equal(options.apiVersion, '2026-10-28.endive'); const s = [...sessions.values()].find(s => s.id === id); assert.ok(s); return s; },
   } } };
-  const deps: PaymentDeps = { store, context: { tenant, origin: 'https://market.example.invalid', enabled: true }, secret: `fictional-checkout-secret-${run}`, now: () => now, randomBytes, mailer: { sendCode: unused }, stripe: createStripeGateway({ tenant, origin: 'https://market.example.invalid', country: 'US', secretKey: 'sk_test_fixture' }, sdk, () => now) };
+  const deps: PaymentDeps = { store, context: { tenant, origin: 'https://market.example.invalid', enabled: true }, secret: `fictional-checkout-secret-${run}`, now: () => now, randomBytes, authenticateUser: unused, stripe: createStripeGateway({ tenant, origin: 'https://market.example.invalid', country: 'US', secretKey: 'sk_test_fixture' }, sdk, () => now) };
   const request = (listingId: string, cookie = `__Host-fb08_mp_buyer=${randomBytes(32).toString('base64url')}`, submissionKey = randomUUID(), extra: Record<string, unknown> = {}, headers: Record<string, string> = {}) => new Request('https://market.example.invalid/api/marketplace/payments/checkout', { method: 'POST', headers: { origin: deps.context.origin, 'sec-fetch-site': 'same-origin', 'content-type': 'application/json', 'idempotency-key': submissionKey, cookie, ...headers }, body: JSON.stringify({ listingId, ...extra }) });
   const resetRates = async () => { if (actors.size) checked(await db.from('marketplace_rate_limits').delete().in('actor_hash', [...actors]).in('action', ['payment-checkout-ip', 'payment-buyer-session-ip'])); };
   async function listing(kind: 'sandbox' | 'ordinary' | 'demo' = 'sandbox', price = '1234.50', status = 'active', binding = tenant) {
     const id = randomUUID(); listingIds.push(id);
     checked(await db.from('marketplace_listings').insert({ id, title: 'Fictional Checkout fixture', description: 'Local test only', price, category: 'Other', seller_display_name: 'Test', image_path: `listings/${id}.webp`, inventory_kind: kind, status }));
     checked(await db.from('marketplace_listing_contacts').insert({ listing_id: id, seller_email: `${run}@example.invalid` }));
-    if (kind === 'sandbox') checked(await db.from('marketplace_payment_inventory').insert({ listing_id: id, tenant: binding }));
+    if (kind === 'sandbox') checked(await db.from('marketplace_payment_inventory').insert({ listing_id: id, tenant: binding, seller_id: binding === tenant ? sellerId : null }));
     return id;
   }
   async function ready() {
