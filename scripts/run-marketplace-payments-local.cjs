@@ -29,10 +29,15 @@ async function setup(docker) {
   if (sql("select count(*) from information_schema.tables where table_schema in ('public','storage');").trim() !== '0') throw new Error('Bootstrap requires an empty disposable database.');
   sql(readFileSync('scripts/local-marketplace-bootstrap.sql', 'utf8'));
   for (const name of [
+    '20261116084500_create_textboard_schema.sql',
     '20261116180858_fb08_marketplace.sql', '20261116182303_marketplace_literal_search.sql',
     '20261117004434_marketplace_payments.sql', '20261117004437_marketplace_payment_functions.sql',
     '20261117095439_marketplace_payment_reconciliation.sql', '20261117102524_marketplace_payment_presentation.sql',
+    '20261118151539_marketplace_account_sellers.sql',
+    '20261118223225_marketplace_connect_v2_account_creation.sql',
+    '20261119002749_marketplace_dynamic_card_checkout.sql',
   ]) sql(readFileSync(`supabase/migrations/${name}`, 'utf8'));
+  sql('grant select, insert, delete on public.board_users to service_role;');
   const extraEnv = { PGRST_JWT_SECRET: randomBytes(48).toString('base64url') };
   docker.run(['run', '--pull', 'never', '-d', '--name', rest.name, '--label', `${label}=true`, '--network', network, '-p', '127.0.0.1:55450:3000', '-e', rest.config, '-e', 'PGRST_DB_SCHEMAS=public', '-e', 'PGRST_DB_ANON_ROLE=anon', '-e', 'PGRST_JWT_SECRET', rest.image], { extraEnv });
   console.log('PASS: owned local database initialized; minimal Storage catalogs only.');
@@ -49,7 +54,7 @@ async function main() {
   const env = ownedRest.Config.Env;
   const secret = env.find(value => value.startsWith('PGRST_JWT_SECRET='))?.slice('PGRST_JWT_SECRET='.length);
   if (!secret) throw new Error('Local JWT configuration missing.');
-  for (const file of ['marketplace.sql', 'marketplace-payments.sql', 'marketplace-seller-proof.sql', 'marketplace-connect.sql', 'marketplace-payment-reconciliation.sql', 'marketplace-payment-presentation.sql']) {
+  for (const file of ['marketplace.sql', 'marketplace-payments.sql', 'marketplace-seller-proof.sql', 'marketplace-connect.sql', 'marketplace-payment-reconciliation.sql', 'marketplace-payment-presentation.sql', 'marketplace-account-sellers.sql', 'marketplace-dynamic-card-checkout.sql']) {
     sql(readFileSync(`supabase/tests/${file}`, 'utf8')); console.log(`PASS: rolled-back ${file}`);
   }
   const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');

@@ -8,6 +8,19 @@ import { capabilityCookie, capabilityCookieName, newCapability, proofHash, valid
 import { assertPaymentOrigin, paymentErrorResponse, readPaymentJson } from './request';
 import { STRIPE_API_VERSION, assertCheckoutUrl } from './stripe-gateway';
 
+// Stripe now uses dynamic payment methods. Keep card as the only payment rail
+// and hide Link separately, because Stripe handles it as a wallet.
+const excludedPaymentMethods = [
+  'acss_debit', 'affirm', 'afterpay_clearpay', 'alipay', 'alma', 'amazon_pay',
+  'au_becs_debit', 'bacs_debit', 'bancontact', 'billie', 'bizum', 'blik', 'boleto',
+  'cashapp', 'crypto', 'customer_balance', 'eps', 'fpx', 'giropay', 'grabpay',
+  'ideal', 'kakao_pay', 'klarna', 'konbini', 'kr_card', 'mb_way', 'mobilepay',
+  'multibanco', 'naver_pay', 'nz_bank_account', 'oxxo', 'p24', 'pay_by_bank',
+  'payco', 'paynow', 'paypal', 'paypay', 'payto', 'pix', 'promptpay', 'revolut_pay',
+  'samsung_pay', 'satispay', 'scalapay', 'sepa_debit', 'sequra', 'sofort', 'sunbit',
+  'swish', 'twint', 'upi', 'us_bank_account', 'wechat_pay', 'zip',
+];
+
 function unavailable(): never { throw new MarketplaceError('Payments unavailable.', 503); }
 function secure(deps: PaymentDeps) { return new URL(deps.context.origin).protocol === 'https:'; }
 function buyerToken(req: Request, deps: PaymentDeps) { return readCookieValue(req, capabilityCookieName('buyer', secure(deps))); }
@@ -52,7 +65,9 @@ export async function ensureCheckout(order: StoredOrder, deps: PaymentDeps): Pro
   if (order.state === 'expired') return expiredCheckout;
   // prepareCheckout returns the first persisted snapshot on retries, including across deployments.
   const prepared = await deps.store.prepareCheckout({ orderId: order.id, tenant: order.tenant, apiVersion: STRIPE_API_VERSION, params: {
-    mode: 'payment', payment_method_types: ['card'], client_reference_id: order.id, expires_at: order.checkoutExpiresAt, metadata,
+    mode: 'payment', excluded_payment_method_types: excludedPaymentMethods,
+    wallet_options: { link: { display: 'never' } },
+    client_reference_id: order.id, expires_at: order.checkoutExpiresAt, metadata,
     line_items: [{ quantity: 1, price_data: { currency: 'php', unit_amount: order.grossMinor, product_data: { name: order.title.replace(/[\u0000-\u001f\u007f-\u009f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 100) || 'Sandbox item' } } }],
     payment_intent_data: { application_fee_amount: order.feeMinor, metadata },
     success_url: orderUrl, cancel_url: `${deps.context.origin}/marketplace/${order.listingId}`,

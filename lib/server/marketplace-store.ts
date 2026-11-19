@@ -7,13 +7,14 @@ import { getPaymentConfig } from './marketplace-payments/config';
 
 const BUCKET = 'marketplace-images';
 const PUBLIC_COLUMNS = 'id,title,description,price,currency,category,seller_display_name,image_path,status,created_at,inventory_kind';
+export type SandboxListingOwner = { tenant: string; userId: string };
 export interface MarketplaceStore {
   browse(filters: ListingFilters): Promise<ListingPage>;
   find(id: string): Promise<PublicListing | null>;
   consumeRate(actor: string, action: string, limit: number): Promise<boolean>;
   upload(path: string, bytes: Buffer): Promise<void>;
   cleanup(path: string): Promise<void>;
-  publish(key: string, fingerprint: string, id: string, path: string, input: CreateListingInput, paymentTenant?: string): Promise<string>;
+  publish(key: string, fingerprint: string, id: string, path: string, input: CreateListingInput, owner?: SandboxListingOwner): Promise<string>;
   inquire(key: string, fingerprint: string, input: InquiryInput): Promise<string>;
 }
 function databaseError(error: { message: string } | null) {
@@ -56,8 +57,11 @@ export function createMarketplaceStore(db: SupabaseClient = getSupabaseAdminClie
       const { data, error } = await db.from('marketplace_listings').select('id').eq('image_path', path).maybeSingle();
       if (!error && !data) await db.storage.from(BUCKET).remove([path]);
     },
-    async publish(key, fingerprint, id, path, input, paymentTenant) {
-      const { data, error } = await db.rpc('marketplace_publish', { p_key: key, p_fingerprint: fingerprint, p_id: id, p_image_path: path, p_input: { ...input, ...(paymentTenant === undefined ? {} : { paymentTenant }) } });
+    async publish(key, fingerprint, id, path, input, owner) {
+      const args = { p_key: key, p_fingerprint: fingerprint, p_id: id, p_image_path: path, p_input: input };
+      const { data, error } = owner
+        ? await db.rpc('marketplace_publish_owned_sandbox', { ...args, p_tenant: owner.tenant, p_user_id: owner.userId })
+        : await db.rpc('marketplace_publish', args);
       databaseError(error);
       if (typeof data !== 'string') throw new MarketplaceError('Could not confirm publication. Please retry.', 503);
       return data;

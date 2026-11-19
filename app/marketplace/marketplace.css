@@ -184,7 +184,6 @@
 .marketplace .payment-notice{font-weight:bold;color:#435d82;line-height:1.5}
 .marketplace .payment-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:12px 0}
 .marketplace .payment-actions button{white-space:normal}
-.marketplace .payment-code{max-width:180px;font-variant-numeric:tabular-nums;letter-spacing:.12em}
 .marketplace .payment-amounts{font-variant-numeric:tabular-nums}
 .marketplace .listing-payment{font-size:10px;line-height:1.45;color:#435d82;margin:6px 0 0}
 .marketplace .sandbox-option{display:flex;align-items:flex-start;gap:7px;line-height:1.5}

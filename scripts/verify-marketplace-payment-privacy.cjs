@@ -111,8 +111,8 @@ function fixtureFor(run, authSecret) {
       ('${soldId}','${soldTitle}','Local only',1234.50,'Other','Test','listings/${soldId}.webp','sandbox','sold');
     insert into public.marketplace_listing_contacts(listing_id,seller_email) values
       ('${ordinaryId}','${sellerEmail}'),('${activeId}','${sellerEmail}'),('${soldId}','${sellerEmail}');
-    insert into public.marketplace_payment_inventory(listing_id,tenant) values ('${activeId}','${tenant}'),('${soldId}','${tenant}');
     insert into public.marketplace_payment_sellers(id,tenant,email_normalized,verified_at) values ('${sellerId}','${tenant}','${sellerEmail}',clock_timestamp());
+    insert into public.marketplace_payment_inventory(listing_id,tenant,seller_id) values ('${activeId}','${tenant}','${sellerId}'),('${soldId}','${tenant}','${sellerId}');
     insert into public.marketplace_connected_accounts(tenant,seller_id,account_id,ready,connection,checked_at,account_create_key)
       values ('${tenant}','${sellerId}','${accountId}',true,'ready',clock_timestamp(),'${randomUUID()}');
     insert into public.marketplace_orders(id,tenant,listing_id,seller_id,account_id,buyer_access_hash,read_expires_at,
@@ -127,8 +127,8 @@ function fixtureFor(run, authSecret) {
     delete from public.marketplace_orders where tenant='${tenant}' and
       (id='${orderId}' or (listing_id='${activeId}' and submission_key='${heldSubmission}'));
     delete from public.marketplace_connected_accounts where seller_id='${sellerId}' and tenant='${tenant}';
-    delete from public.marketplace_payment_sellers where id='${sellerId}' and tenant='${tenant}';
     delete from public.marketplace_payment_inventory where listing_id in ${ids} and tenant='${tenant}';
+    delete from public.marketplace_payment_sellers where id='${sellerId}' and tenant='${tenant}';
     delete from public.marketplace_listing_contacts where listing_id in ${ids} and seller_email='${sellerEmail}';
     delete from public.marketplace_listings where (id,title) in
       (('${ordinaryId}','${ordinaryTitle}'),('${activeId}','${activeTitle}'),('${soldId}','${soldTitle}'));
@@ -151,8 +151,6 @@ async function verify({ token, anonToken, sql }) {
     SUPABASE_SERVICE_ROLE_KEY: token, AUTH_SESSION_SECRET: authSecret,
     STRIPE_SECRET_KEY: `sk_test_${randomBytes(16).toString('hex')}`,
     STRIPE_WEBHOOK_SECRET: `whsec_${randomBytes(16).toString('hex')}`,
-    RESEND_API_KEY: `re_${randomBytes(16).toString('hex')}`,
-    MARKETPLACE_SELLER_EMAIL_FROM: `fictional-sender-${run}@example.test`,
   };
   const env = {
     PATH: process.env.PATH, SystemRoot: process.env.SystemRoot, TEMP: process.env.TEMP, TMP: process.env.TMP,

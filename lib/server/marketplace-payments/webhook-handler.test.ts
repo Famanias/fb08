@@ -49,6 +49,25 @@ test('stale_account_event_cannot_restore_readiness: canonical restricted account
   const results = await Promise.all([1, 2].map(() => handleStripeWebhook(f.request(event), f.deps)));
   assert.deepEqual(results.map(r => r.status).sort(), [200, 503]); assert.deepEqual(f.writes, [{ ready: false, connection: 'restricted' }]);
 });
+test('signed account snapshot without envelope attribution refreshes a locally owned account', async () => {
+  const f = fixture();
+  const event = { ...f.event, type: 'account.updated', account: undefined, data: { object: { id: f.order.accountId, object: 'account' } } };
+  assert.equal((await handleStripeWebhook(f.request(event), f.deps)).status, 200);
+  assert.deepEqual(f.reads, [f.order.accountId]);
+  assert.deepEqual(f.writes, ['lease', { ready: false, connection: 'restricted' }]);
+});
+test('unattributed account snapshots do not contact Stripe for a foreign or mismatched account', async () => {
+  const f = fixture();
+  const base = { ...f.event, type: 'account.updated', account: undefined };
+  for (const event of [
+    { ...base, data: { object: { id: 'acct_foreign', object: 'account' } } },
+    { ...base, account: 'acct_foreign', data: { object: { id: f.order.accountId, object: 'account' } } },
+    { ...base, data: { object: { id: f.order.accountId, object: 'account', metadata: { tenant: 'foreign' } } } },
+    { ...base, data: { object: { id: f.order.accountId, object: 'account', metadata: { seller_id: 'foreign' } } } },
+  ]) assert.equal((await handleStripeWebhook(f.request(event), f.deps)).status, 200);
+  assert.deepEqual(f.reads, []);
+  assert.deepEqual(f.writes, []);
+});
 test('public Node route ignores framework context and verifies signed foreign traffic while purchases are disabled', async () => {
   const { POST } = await import('../../../app/api/marketplace/stripe/webhook/route');
   const env = { MARKETPLACE_PAYMENT_TENANT: 'route-fixture', MARKETPLACE_APP_ORIGIN: 'https://market.example.invalid', MARKETPLACE_PAYMENTS_ENABLED: 'false', AUTH_SESSION_SECRET: 'fictional-route-session-secret-at-least32characters', NEXT_PUBLIC_SUPABASE_URL: 'http://127.0.0.1:1', SUPABASE_SERVICE_ROLE_KEY: 'fictional-local-service-key', STRIPE_WEBHOOK_SECRET: secret };

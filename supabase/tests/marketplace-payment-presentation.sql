@@ -3,8 +3,8 @@ begin;
 insert into public.marketplace_listings(id,title,description,price,category,seller_display_name,image_path,inventory_kind)
 values('60000000-0000-4000-8000-000000000001','Task6 local fixture','Fictional',1234.50,'Other','Fixture','listings/60000000-0000-4000-8000-000000000001.webp','sandbox');
 insert into public.marketplace_listing_contacts values('60000000-0000-4000-8000-000000000001','Fixture@Example.invalid');
-insert into public.marketplace_payment_inventory(listing_id,tenant) values('60000000-0000-4000-8000-000000000001','task6-local');
 insert into public.marketplace_payment_sellers(id,tenant,email_normalized,verified_at) values('60000000-0000-4000-8000-000000000002','task6-local','fixture@example.invalid',now());
+insert into public.marketplace_payment_inventory(listing_id,tenant,seller_id) values('60000000-0000-4000-8000-000000000001','task6-local','60000000-0000-4000-8000-000000000002');
 insert into public.marketplace_connected_accounts(tenant,seller_id,account_id,ready,connection,checked_at,account_create_key)
 values('task6-local','60000000-0000-4000-8000-000000000002','acct_task6',true,'ready',now(),'task6-create');
 set local role service_role;

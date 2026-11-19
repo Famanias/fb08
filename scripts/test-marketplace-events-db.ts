@@ -37,7 +37,7 @@ async function main() {
   } } };
   const store = createPaymentStore(db); const originalApply = store.applyCheckout;
   store.applyCheckout = async input => { const result = await originalApply(input); if (result === 'paid') soldUpdates.push(input.orderId); return result; };
-  const deps: PaymentDeps = { store, stripe: createStripeGateway({ tenant, origin: 'https://market.example.invalid', country: 'US', secretKey: 'sk_test_fixture', webhookSecret: secret }, sdk), context: { tenant, origin: 'https://market.example.invalid', enabled: false }, mailer: { sendCode: unused }, secret: 'fictional-session-secret-at-least32characters', now: () => now, randomBytes };
+  const deps: PaymentDeps = { store, stripe: createStripeGateway({ tenant, origin: 'https://market.example.invalid', country: 'US', secretKey: 'sk_test_fixture', webhookSecret: secret }, sdk), context: { tenant, origin: 'https://market.example.invalid', enabled: false }, authenticateUser: unused, secret: 'fictional-session-secret-at-least32characters', now: () => now, randomBytes };
   const server = createServer(async (req, res) => {
     try {
       const chunks = []; for await (const chunk of req) chunks.push(Buffer.from(chunk));
@@ -56,7 +56,7 @@ async function main() {
     const listingId = randomUUID(); listings.push(listingId);
     checked(await db.from('marketplace_listings').insert({ id: listingId, title: 'Fictional signed event fixture', description: 'Local test only', price: '1234.50', category: 'Other', seller_display_name: 'Test', image_path: `listings/${listingId}.webp`, inventory_kind: 'sandbox' }));
     checked(await db.from('marketplace_listing_contacts').insert({ listing_id: listingId, seller_email: `${run}@example.invalid` }));
-    checked(await db.from('marketplace_payment_inventory').insert({ listing_id: listingId, tenant }));
+    checked(await db.from('marketplace_payment_inventory').insert({ listing_id: listingId, tenant, seller_id: sellerId }));
     const order = await store.reserve({ listingId, tenant, buyerAccessHash: 'fixture-buyer', submissionKey: randomUUID(), now });
     const metadata = { fb08_app: 'marketplace-payments-v1', tenant, order_id: order.id, listing_id: listingId };
     const prepared = await store.prepareCheckout({ orderId: order.id, tenant, apiVersion: '2026-10-28.endive', params: { mode: 'payment', payment_method_types: ['card'], client_reference_id: order.id, expires_at: order.checkoutExpiresAt, metadata, line_items: [{ quantity: 1, price_data: { currency: 'php', unit_amount: 123450 } }], payment_intent_data: { application_fee_amount: 12345, metadata } } });

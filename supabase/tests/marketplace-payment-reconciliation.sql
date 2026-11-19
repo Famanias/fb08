@@ -5,7 +5,7 @@ declare listing uuid:=gen_random_uuid(); o jsonb; m jsonb; c jsonb;
 begin
   insert into public.marketplace_listings(id,title,description,price,category,seller_display_name,image_path,inventory_kind) values(listing,'Fictional event fixture','Local test',1234.50,'Other','Test','listings/'||listing||'.webp','sandbox');
   insert into public.marketplace_listing_contacts values(listing,'events@example.invalid');
-  insert into public.marketplace_payment_inventory(listing_id,tenant) values(listing,'event-tests');
+  insert into public.marketplace_payment_inventory(listing_id,tenant,seller_id) values(listing,'event-tests','a0000000-0000-4000-8000-000000000001');
   o:=public.marketplace_reserve_order('event-tests',listing,'buyer',gen_random_uuid(),now());
   m:=jsonb_build_object('fb08_app','marketplace-payments-v1','tenant','event-tests','order_id',o->>'id','listing_id',listing::text);
   perform public.marketplace_prepare_checkout('event-tests',(o->>'id')::uuid,jsonb_build_object('mode','payment','payment_method_types',jsonb_build_array('card'),'expires_at',(o->>'checkout_expires_at')::bigint,'client_reference_id',o->>'id','metadata',m,'line_items',jsonb_build_array(jsonb_build_object('quantity',1,'price_data',jsonb_build_object('currency','php','unit_amount',123450))),'payment_intent_data',jsonb_build_object('application_fee_amount',12345,'metadata',m)),'test-version');

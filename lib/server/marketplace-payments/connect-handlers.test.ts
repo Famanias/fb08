@@ -3,31 +3,34 @@ import assert from 'node:assert/strict';
 import { randomBytes, randomUUID } from 'node:crypto';
 import type { PaymentDeps, PaymentStore, PendingSellerAccount, SellerAccount } from './contracts';
 import { handleConnect, handleConnectRefresh, refreshKnownAccount } from './connect-handlers';
-import { handleSellerStatus, handleSellerLogout } from './seller-handlers';
+import { handleSellerStatus } from './seller-handlers';
+import { signSessionToken } from '../auth';
+import { getAuthenticatedUser } from '../route-helpers';
 
 function fixture() {
-  const seller = { id: randomUUID(), emailNormalized: 'private@example.invalid', tenant: 'local' };
+  const seller = { id: randomUUID(), tenant: 'local' };
+  const user = { id: randomUUID(), username: 'seller' };
   let slot: PendingSellerAccount | null = null; let account: SellerAccount | null = null; let lease: string | null = null; let now = new Date('2026-11-17T00:00:00Z'); let allowed = true; let authenticated = true;
   const calls = { created: [] as string[], linkedBeforeUrl: [] as boolean[], reads: 0, rates: [] as string[] }; const unused = async (): Promise<never> => { throw new Error('Unexpected store operation'); };
-  const store: PaymentStore = { getPublicPaymentStates: unused, findListingPaymentAccount: unused, getOrderConfirmation: unused, reserve: unused, findCheckoutReservation: unused, prepareCheckout: unused, attachSession: unused, findOrder: unused, applyCheckout: unused, saveSettlement: unused, findInventory: unused, inspectInventory: unused, findPaidWebhookReceipt: unused, listReconciliationOrders: unused, findSeller: unused, issueChallenge: unused, findChallenge: unused, consumeChallenge: unused, revokeSellerSession: unused,
-    async consumeRate(_actor, action) { calls.rates.push(action); return allowed; }, async findSellerSession(_hash, tenant) { return authenticated && tenant === seller.tenant ? seller : null; },
+  const store: PaymentStore = { getPublicPaymentStates: unused, findListingPaymentAccount: unused, getOrderConfirmation: unused, reserve: unused, findCheckoutReservation: unused, prepareCheckout: unused, attachSession: unused, findOrder: unused, applyCheckout: unused, saveSettlement: unused, findInventory: unused, inspectInventory: unused, findPaidWebhookReceipt: unused, listReconciliationOrders: unused,
+    async consumeRate(_actor, action) { calls.rates.push(action); return allowed; }, async findSellerForUser(userId, tenant) { return userId === user.id && tenant === seller.tenant ? seller : null; },
     async ensureSellerAccountSlot() { slot ??= { sellerId: seller.id, accountId: null, accountCreateKey: 'local:account:fixed:v1', preparedAt: now.toISOString() }; return { ...slot }; },
     async saveSellerAccount(_seller, _tenant, id, key) { assert.equal(key, slot!.accountCreateKey); if (slot!.accountId && slot!.accountId !== id) throw new Error('reassignment'); slot!.accountId = id; account = { sellerId: seller.id, accountId: id, ready: false, connection: 'pending', checkedAt: '', accountCreateKey: key }; },
     async findSellerAccount() { return account; }, async findAccountById() { return account; }, async findSellerConnection() { return account?.connection ?? (slot ? 'pending' : null); },
     async acquireAccountRefresh(_id, _tenant, id) { if (lease) return false; lease = id; if (account) account.ready = false; return true; },
     async saveAccountReadiness(_id, _tenant, id, readiness, checkedAt) { if (lease !== id) return false; lease = null; Object.assign(account!, readiness, { checkedAt }); return true; },
   };
-  const deps: PaymentDeps = { store, context: { tenant: 'local', origin: 'https://market.example.invalid', enabled: true }, secret: 'fictional-test-session-secret-32-characters', now: () => now, randomBytes, mailer: { sendCode: unused }, stripe: { expireCheckout: unused, readSettlement: unused, verifyEvent: () => { throw new Error('Unexpected event'); }, createCheckout: unused, readCheckout: unused,
+  const deps: PaymentDeps = { store, context: { tenant: 'local', origin: 'https://market.example.invalid', enabled: true }, secret: 'fictional-test-session-secret-32-characters', now: () => now, randomBytes, authenticateUser: req => getAuthenticatedUser(req, { async findUserById(id) { return id === user.id && authenticated ? user : null; } }, deps.secret), stripe: { expireCheckout: unused, readSettlement: unused, verifyEvent: () => { throw new Error('Unexpected event'); }, createCheckout: unused, readCheckout: unused,
     async ensureAccount(_seller, key) { calls.created.push(key); return { accountId: 'acct_fixture' }; }, async onboardingLink() { calls.linkedBeforeUrl.push(!!account); return { url: 'https://connect.stripe.com/setup/fixture' }; }, async readAccount(id) { calls.reads++; return { accountId: id, ready: false, connection: 'pending', metadata: { fb08_app: 'marketplace-payments-v1', tenant: 'local', seller_id: seller.id }, checkedAt: now.toISOString() }; },
   } };
-  const req = (body: unknown = {}, headers: Record<string, string> = {}) => new Request(`${deps.context.origin}/api/marketplace/payments/connect?ready=true`, { method: 'POST', headers: { origin: deps.context.origin, 'sec-fetch-site': 'same-origin', 'content-type': 'application/json', cookie: '__Host-fb08_mp_seller=' + Buffer.alloc(32, 1).toString('base64url'), ...headers }, body: JSON.stringify(body) });
+  const req = (body: unknown = {}, headers: Record<string, string> = {}) => new Request(`${deps.context.origin}/api/marketplace/payments/connect?ready=true`, { method: 'POST', headers: { origin: deps.context.origin, 'sec-fetch-site': 'same-origin', 'content-type': 'application/json', cookie: 'fb08_session=' + signSessionToken({ userId: user.id, username: user.username }, deps.secret), ...headers }, body: JSON.stringify(body) });
   return { deps, req, seller, calls, account: () => account, slot: () => slot, setNow: (v: string) => { now = new Date(v); }, setAllowed: (v: boolean) => { allowed = v; }, setAuth: (v: boolean) => { authenticated = v; }, setLease: (v: string | null) => { lease = v; } };
 }
-test('onboarding_requires_verified_seller and rejects posted authority and cross-origin', async () => {
+test('onboarding requires a signed-in listing owner and rejects posted authority and cross-origin', async () => {
   const f = fixture();
   const invalidHeaders: Record<string, string>[] = [{ cookie: '' }, { cookie: 'fb08_session=board' }, { origin: 'https://evil.example.invalid' }, { 'sec-fetch-site': 'cross-site' }];
   for (const headers of invalidHeaders) assert.ok([401, 403].includes((await handleConnect(f.req({ email: 'private@example.invalid', accountId: 'acct_rogue' }, headers), f.deps)).status));
-  f.deps.context.tenant = 'foreign'; assert.equal((await handleConnect(f.req(), f.deps)).status, 401); f.deps.context.tenant = 'local';
+  f.deps.context.tenant = 'foreign'; assert.equal((await handleConnect(f.req(), f.deps)).status, 409); f.deps.context.tenant = 'local';
   assert.equal((await handleConnect(f.req({ accountId: 'acct_rogue', country: 'CA', returnUrl: 'https://evil.example.invalid' }), f.deps)).status, 400); assert.equal(f.calls.created.length, 0);
   f.deps.context.enabled = false; assert.equal((await handleConnect(f.req(), f.deps)).status, 503);
 });
@@ -63,11 +66,9 @@ test('API failures, wrong seller metadata, busy and superseded refresh cannot au
   f.setLease(null); f.deps.stripe.readAccount = async id => { f.setLease('superseding'); return { accountId: id, ready: true, connection: 'ready', metadata: { fb08_app: 'marketplace-payments-v1', tenant: 'local', seller_id: f.seller.id }, checkedAt: f.deps.now().toISOString() }; };
   await assert.rejects(refreshKnownAccount(account, f.deps)); assert.equal(account.ready, false);
 });
-test('disabled purchases preserve seller proof, status and logout; API failure returns private 503', async () => {
+test('paused purchases keep signed-in seller status readable and provider failures private', async () => {
   const f = fixture(); await handleConnect(f.req(), f.deps); f.deps.context.enabled = false;
-  let revoked = false; f.deps.store.revokeSellerSession = async () => { revoked = true; };
-  assert.equal((await handleSellerLogout(f.req(), f.deps)).status, 200); assert.equal(revoked, true);
-  const pending = await handleSellerStatus(f.req(), f.deps); assert.equal(pending.status, 200); assert.equal((await pending.json()).verified, true);
+  const pending = await handleSellerStatus(f.req(), f.deps); assert.equal(pending.status, 200); assert.deepEqual(await pending.json(), { connection: 'pending', paymentsEnabled: false });
   f.setNow('2026-11-17T00:02:00Z'); f.deps.stripe.readAccount = async () => { throw new Error('private@example.invalid provider secret'); };
   const failed = await handleSellerStatus(f.req(), f.deps); assert.equal(failed.status, 503); assert.ok(!(await failed.text()).includes('private')); assert.equal(f.account()?.ready, false);
 });

@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto';
 import type { PaymentDeps } from './contracts';
 import { getPaymentContext, getPaymentConfig } from './config';
 import { createPaymentStore } from './store';
-import { createSellerMailer } from './seller-mailer';
+import { getAuthenticatedUser } from '../route-helpers';
 import { createStripeGateway } from './stripe-gateway';
 
 export function createPaymentDeps(newPayments = false): PaymentDeps {
@@ -10,5 +10,5 @@ export function createPaymentDeps(newPayments = false): PaymentDeps {
   const context = { tenant: config.tenant, origin: config.origin, enabled: config.enabled };
   const secret = process.env.AUTH_SESSION_SECRET;
   if (!secret || secret.length < 32) throw new Error('Payment configuration unavailable.');
-  return { context, secret, store: createPaymentStore(), mailer: createSellerMailer(), stripe: createStripeGateway({ ...context, secretKey: process.env.STRIPE_SECRET_KEY ?? '', webhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? '', country: process.env.MARKETPLACE_STRIPE_ACCOUNT_COUNTRY ?? '' }), now: () => new Date(), randomBytes };
+  return { context, secret, store: createPaymentStore(), authenticateUser: getAuthenticatedUser, stripe: createStripeGateway({ ...context, secretKey: process.env.STRIPE_SECRET_KEY ?? '', webhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? '', country: process.env.MARKETPLACE_STRIPE_ACCOUNT_COUNTRY ?? '' }), now: () => new Date(), randomBytes };
 }

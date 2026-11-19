@@ -2,12 +2,19 @@
 begin;
 set local role service_role;
 do $$
-declare s uuid:='72000000-0000-4000-8000-000000000001'; slot jsonb; again jsonb; f record; r text;
+declare s uuid:='72000000-0000-4000-8000-000000000001'; legacy uuid:='72000000-0000-4000-8000-000000000002'; slot jsonb; again jsonb; f record; r text;
 begin
   insert into public.marketplace_payment_sellers(id,tenant,email_normalized,verified_at) values(s,'connect-sql','seller@example.invalid',now());
   slot:=public.marketplace_ensure_account_slot('connect-sql',s);
   again:=public.marketplace_ensure_account_slot('connect-sql',s);
   assert slot=again and slot->>'account_id' is null and slot->>'account_create_key' is not null, 'durable stable slot';
+  assert slot->>'account_create_key' like '%:v2', 'new seller uses Accounts v2';
+  insert into public.marketplace_payment_sellers(id,tenant,email_normalized,verified_at)
+    values(legacy,'connect-sql','legacy@example.invalid',now());
+  insert into public.marketplace_connected_accounts(tenant,seller_id,account_create_key)
+    values('connect-sql',legacy,'connect-sql:account:original:v1');
+  assert public.marketplace_ensure_account_slot('connect-sql',legacy)->>'account_create_key'
+    = 'connect-sql:account:original:v1', 'pending v1 key is retained';
   begin perform public.marketplace_ensure_account_slot('foreign',s); raise exception 'expected rejection'; exception when others then assert sqlerrm='seller_unavailable'; end;
   begin perform public.marketplace_save_account('connect-sql',s,'acct_sql','wrong-key'); raise exception 'expected rejection'; exception when others then assert sqlerrm='account_conflict'; end;
   perform public.marketplace_save_account('connect-sql',s,'acct_sql',slot->>'account_create_key');

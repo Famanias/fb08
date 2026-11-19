@@ -19,7 +19,9 @@ export function validUuid(value: unknown): value is string { return typeof value
 export function validateListing(input: Record<string, unknown>): CreateListingInput {
   const inventoryKind = input.inventoryKind ?? 'ordinary';
   if (inventoryKind !== 'ordinary' && inventoryKind !== 'sandbox') throw new MarketplaceError('Choose a valid inventory kind.', 400, 'inventoryKind');
-  if ('paymentTenant' in input || 'payment_tenant' in input || 'tenant' in input) throw new MarketplaceError('Invalid listing details.');
+  if (['paymentTenant', 'payment_tenant', 'tenant', 'owner', 'ownerUserId', 'owner_user_id'].some(key => key in input)) {
+    throw new MarketplaceError('Invalid listing details.');
+  }
   const price = text(input.price, 'price', 12);
   if (!/^\d{1,9}(\.\d{1,2})?$/.test(price)) throw new MarketplaceError('Enter a price from ₱0 to ₱999,999,999.99 with at most two decimals.', 400, 'price');
   if (!CATEGORIES.includes(input.category as MarketplaceCategory)) throw new MarketplaceError('Choose a valid category.', 400, 'category');

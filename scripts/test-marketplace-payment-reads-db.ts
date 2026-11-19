@@ -19,13 +19,13 @@ async function main() {
   const buyer = randomBytes(32).toString('base64url'); const secret = 'local-read-fixture-secret-at-least32chars'; const store = createPaymentStore(db); const marketplace = createMarketplaceStore(db);
   let now = new Date(); let providerReads = 0; let canonicalReady = true; let providerFailure = false;
   const unused = async (): Promise<never> => { throw new Error('Unexpected provider operation'); };
-  const deps: PaymentDeps = { context: { tenant, origin: 'http://localhost:3000', enabled: true }, store, secret, randomBytes, now: () => now, mailer: { sendCode: unused }, stripe: { ensureAccount: unused, onboardingLink: unused, createCheckout: unused, readCheckout: unused, expireCheckout: unused, readSettlement: unused, verifyEvent: () => { throw new Error('Unexpected event'); }, async readAccount(id) { providerReads++; assert.equal(id, accountId); if (providerFailure) throw new Error('Local injected failure'); return { accountId, ready: canonicalReady, connection: canonicalReady ? 'ready' : 'restricted', checkedAt: now.toISOString(), metadata: { fb08_app: 'marketplace-payments-v1', tenant, seller_id: sellerId } }; } } };
+  const deps: PaymentDeps = { context: { tenant, origin: 'http://localhost:3000', enabled: true }, store, secret, randomBytes, now: () => now, authenticateUser: unused, stripe: { ensureAccount: unused, onboardingLink: unused, createCheckout: unused, readCheckout: unused, expireCheckout: unused, readSettlement: unused, verifyEvent: () => { throw new Error('Unexpected event'); }, async readAccount(id) { providerReads++; assert.equal(id, accountId); if (providerFailure) throw new Error('Local injected failure'); return { accountId, ready: canonicalReady, connection: canonicalReady ? 'ready' : 'restricted', checkedAt: now.toISOString(), metadata: { fb08_app: 'marketplace-payments-v1', tenant, seller_id: sellerId } }; } } };
   const request = (id: string, token = buyer, query = '') => new Request(`http://localhost/api/marketplace/payments/orders/${id}${query}`, { headers: token ? { cookie: `fb08_mp_buyer=${token}` } : {} });
   try {
     checked(await db.from('marketplace_listings').insert({ id: listingId, title: tenant, description: 'Fictional local scoped-read fixture', price: '1234.50', category: 'Other', seller_display_name: 'Local fixture', image_path: `listings/${listingId}.webp`, inventory_kind: 'sandbox' }));
     checked(await db.from('marketplace_listing_contacts').insert({ listing_id: listingId, seller_email: `${sellerId}@example.invalid` }));
-    checked(await db.from('marketplace_payment_inventory').insert({ listing_id: listingId, tenant }));
     checked(await db.from('marketplace_payment_sellers').insert({ id: sellerId, tenant, email_normalized: `${sellerId}@example.invalid`, verified_at: now.toISOString() }));
+    checked(await db.from('marketplace_payment_inventory').insert({ listing_id: listingId, tenant, seller_id: sellerId }));
     checked(await db.from('marketplace_connected_accounts').insert({ tenant, seller_id: sellerId, account_id: accountId, ready: true, connection: 'ready', checked_at: now.toISOString(), account_create_key: randomUUID() }));
     assert.equal((await store.getPublicPaymentStates([listingId], deps.context))[listingId].availability, 'ready'); assert.equal(providerReads, 0);
     // Advance past display TTL in the DB while fake time advances for the production refresh helper.
@@ -61,7 +61,7 @@ async function main() {
     console.log('PASS real availability: ready after61s refresh; restricted/failure/review unavailable; sold detail retained/feed excludes/inquiry rejects/removed absent; own review receipt preserves newer paid.');
   } finally {
     checked(await db.from('marketplace_stripe_events').delete().eq('tenant', tenant)); checked(await db.from('marketplace_orders').delete().eq('tenant', tenant));
-    checked(await db.from('marketplace_connected_accounts').delete().eq('tenant', tenant)); checked(await db.from('marketplace_payment_sellers').delete().eq('tenant', tenant)); checked(await db.from('marketplace_payment_inventory').delete().eq('tenant', tenant));
+    checked(await db.from('marketplace_connected_accounts').delete().eq('tenant', tenant)); checked(await db.from('marketplace_payment_inventory').delete().eq('tenant', tenant)); checked(await db.from('marketplace_payment_sellers').delete().eq('tenant', tenant));
     checked(await db.from('marketplace_listing_contacts').delete().eq('listing_id', listingId)); checked(await db.from('marketplace_listings').delete().eq('id', listingId));
     console.log('PASS exact owned local read fixtures removed.');
   }

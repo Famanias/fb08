@@ -4,13 +4,17 @@ import type Stripe from 'stripe';
 import { createStripeGateway, type PaymentSdk } from './stripe-gateway';
 import type { PreparedOrder } from './contracts';
 
-const seller = { id: '11111111-1111-4111-8111-111111111111', emailNormalized: 'private@example.invalid', tenant: 'local' };
+const seller = { id: '11111111-1111-4111-8111-111111111111', tenant: 'local' };
 function fixture(linkUrl = 'https://connect.stripe.com/setup/fixture') {
   let account = { id: 'acct_fixture', object: 'account', country: 'US', details_submitted: true, charges_enabled: true, payouts_enabled: true, capabilities: { card_payments: 'active' }, requirements: { disabled_reason: null, currently_due: [], past_due: [], pending_verification: [], errors: [] }, controller: { fees: { payer: 'account' }, losses: { payments: 'stripe' }, requirement_collection: 'stripe', stripe_dashboard: { type: 'full' } }, metadata: { fb08_app: 'marketplace-payments-v1', tenant: 'local', seller_id: seller.id } } as unknown as Stripe.Account;
   const calls: Array<{ method: string; params: unknown; options: unknown }> = [];
   const unused = async (): Promise<never> => { throw new Error('Unexpected Checkout operation'); };
   const sdk: PaymentSdk = { charges: { retrieve: unused }, balanceTransactions: { retrieve: unused }, checkout: { sessions: { create: unused, retrieve: unused, expire: unused } }, paymentIntents: { retrieve: unused, cancel: unused }, accounts: { async create(params, options) { calls.push({ method: 'create', params, options }); return account; }, async retrieve(id, _params, options) { calls.push({ method: 'retrieve', params: id, options }); return account; } }, accountLinks: { async create(params, options) { calls.push({ method: 'link', params, options }); return { url: linkUrl } as Stripe.AccountLink; } } };
-  return { calls, account, setAccount: (a: Stripe.Account) => { account = a; }, gateway: createStripeGateway({ tenant: 'local', country: 'US', secretKey: 'sk_test_fixture', origin: 'https://market.example.invalid' }, sdk, () => new Date('2026-11-17T00:00:00Z')) };
+  const provider = { ...sdk, v2: { core: { accounts: { async create(params: unknown, options: unknown) {
+    calls.push({ method: 'createV2', params, options });
+    return { id: account.id, livemode: false, metadata: account.metadata };
+  } } } } };
+  return { calls, account, setAccount: (a: Stripe.Account) => { account = a; }, gateway: createStripeGateway({ tenant: 'local', country: 'US', secretKey: 'sk_test_fixture', origin: 'https://market.example.invalid' }, provider, () => new Date('2026-11-17T00:00:00Z')) };
 }
 test('official adapter creates only the selected controller with opaque metadata and stable key', async () => {
   const f = fixture(); assert.deepEqual(await f.gateway.ensureAccount(seller, 'local:account:opaque:v1'), { accountId: 'acct_fixture' });
@@ -18,6 +22,23 @@ test('official adapter creates only the selected controller with opaque metadata
   await f.gateway.ensureAccount(seller, 'local:account:opaque:v1'); assert.deepEqual(f.calls[1], f.calls[0], 'normal retry preserves exact parameters and key');
   assert.ok(!JSON.stringify(f.calls).includes('private@'));
   await assert.rejects(f.gateway.ensureAccount({ ...seller, tenant: 'foreign' }, 'key')); assert.equal(f.calls.length, 2);
+});
+test('new Stripe account slots use Accounts v2 and retry the exact persisted key', async () => {
+  const f = fixture();
+  const key = 'local:account:opaque:v2';
+  assert.deepEqual(await f.gateway.ensureAccount(seller, key), { accountId: 'acct_fixture' });
+  await f.gateway.ensureAccount(seller, key);
+  assert.deepEqual(f.calls[0], {
+    method: 'createV2',
+    params: {
+      identity: { country: 'US' }, dashboard: 'full',
+      defaults: { responsibilities: { fees_collector: 'stripe', losses_collector: 'stripe' } },
+      configuration: { merchant: { capabilities: { card_payments: { requested: true } } } },
+      metadata: { fb08_app: 'marketplace-payments-v1', tenant: 'local', seller_id: seller.id },
+    },
+    options: { idempotencyKey: key, apiVersion: '2026-11-18.endive', timeout: 5000, maxNetworkRetries: 1 },
+  });
+  assert.deepEqual(f.calls[1], f.calls[0]);
 });
 test('hosted account link uses only fixed server origin', async () => {
   const f = fixture(); assert.deepEqual(await f.gateway.onboardingLink('acct_fixture', 'https://market.example.invalid'), { url: 'https://connect.stripe.com/setup/fixture' });
@@ -59,6 +80,21 @@ test('direct Checkout creates verbatim durable snapshot using account, original 
   assert.deepEqual(f.calls[1], f.calls[0]); assert.ok(!JSON.stringify(f.calls).includes('secret-hash'));
   await assert.rejects(f.gateway.createCheckout({ ...f.order, tenant: 'foreign' }));
   await assert.rejects(f.gateway.createCheckout({ ...f.order, accountId: 'bad' })); assert.equal(f.calls.length, 2);
+});
+test('a dynamic Stripe Checkout cannot expose a URL with an unexpected payment method', async () => {
+  const f = checkoutFixture();
+  const walletOptions = { link: { display: 'never' as const } };
+  const snapshot: Record<string, unknown> = { ...f.order.createParams, excluded_payment_method_types: ['paypal', 'us_bank_account'], wallet_options: walletOptions };
+  delete snapshot.payment_method_types;
+  const order = { ...f.order, createParams: snapshot };
+  f.setSession({ payment_method_types: ['card', 'us_bank_account'], wallet_options: walletOptions });
+  await assert.rejects(f.gateway.createCheckout(order));
+  await assert.rejects(f.gateway.readCheckout(order, 'cs_test_fixture'));
+  f.setSession({ payment_method_types: ['card', 'link'], wallet_options: { link: { display: 'auto' } } });
+  await assert.rejects(f.gateway.createCheckout(order));
+  f.setSession({ payment_method_types: ['card', 'link'], wallet_options: walletOptions });
+  assert.equal((await f.gateway.createCheckout(order)).url, 'https://checkout.stripe.com/c/pay/fixture');
+  assert.equal((await f.gateway.readCheckout(order, 'cs_test_fixture')).url, 'https://checkout.stripe.com/c/pay/fixture');
 });
 
 test('canonical Checkout retrieval is account/version scoped and never treats inaccessible PI as absent', async () => {

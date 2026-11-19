@@ -22,10 +22,6 @@ export function getPaymentConfig(env: Partial<NodeJS.ProcessEnv>): PaymentContex
   const context = getPaymentContext(env); const stripe = getStripeConfig(env);
   if (!env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || !/^pk_test_[A-Za-z0-9]+$/.test(env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY)
     || !env.STRIPE_WEBHOOK_SECRET || !/^whsec_[A-Za-z0-9]+$/.test(env.STRIPE_WEBHOOK_SECRET)
-    || !env.AUTH_SESSION_SECRET || env.AUTH_SESSION_SECRET.length < 32
-    || !env.RESEND_API_KEY || !/^re_[A-Za-z0-9_-]+$/.test(env.RESEND_API_KEY)
-    || !env.MARKETPLACE_SELLER_EMAIL_FROM || !/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(env.MARKETPLACE_SELLER_EMAIL_FROM)
-    || env.MARKETPLACE_SELLER_EMAIL_FROM !== env.MARKETPLACE_SELLER_EMAIL_FROM.trim().toLowerCase()
-    || env.MARKETPLACE_SELLER_EMAIL_FROM.endsWith('.invalid') || env.MARKETPLACE_SELLER_EMAIL_FROM.endsWith('@resend.dev')) unavailable();
+    || !env.AUTH_SESSION_SECRET || env.AUTH_SESSION_SECRET.length < 32) unavailable();
   return { ...context, ...stripe, webhookSecret: env.STRIPE_WEBHOOK_SECRET };
 }

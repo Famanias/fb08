@@ -2,7 +2,7 @@
 import type { OrderConfirmation, PublicPaymentState } from '../../../features/marketplace/payments/types';
 export type PaymentContext = { tenant: string; origin: string; enabled: boolean };
 export type OrderState = 'preparing' | 'open' | 'paid' | 'expired' | 'review';
-export type SellerIdentity = { id: string; emailNormalized: string; tenant: string };
+export type SellerIdentity = { id: string; tenant: string };
 export type SellerAccount = {
   sellerId: string; accountId: string; ready: boolean;
   connection: 'pending' | 'ready' | 'restricted'; checkedAt: string; accountCreateKey: string;
@@ -42,12 +42,9 @@ export interface StripeGateway {
 }
 export type OnboardingStripeGateway = Pick<StripeGateway, 'ensureAccount' | 'readAccount' | 'onboardingLink'>;
 export type CheckoutStripeGateway = OnboardingStripeGateway & Pick<StripeGateway, 'createCheckout' | 'readCheckout'>;
-export type SellerChallenge = { id: string; emailNormalized: string; browserHash: string; expiresAt: string };
-export interface SellerMailer {
-  sendCode(input: { to: string; code: string; expiresMinutes: 10; challengeId: string }): Promise<void>;
-}
 export type PaymentDeps = {
-  store: PaymentStore; mailer: SellerMailer; stripe: StripeGateway; context: PaymentContext; secret: string;
+  store: PaymentStore; stripe: StripeGateway; context: PaymentContext; secret: string;
+  authenticateUser: (req: Request) => Promise<{ id: string } | null>;
   now: () => Date; randomBytes: (size: number) => Buffer;
 };
 type CheckoutReservation = { listingId: string; buyerAccessHash: string; submissionKey: string; tenant: string };
@@ -56,12 +53,7 @@ export interface PaymentStore {
   findListingPaymentAccount(listingId: string, context: PaymentContext): Promise<SellerAccount | null>;
   getOrderConfirmation(orderId: string, buyerHash: string, tenant: string, now: Date): Promise<OrderConfirmation | null>;
   consumeRate(actor: string, action: string, limit: number): Promise<boolean>;
-  findSeller(emailNormalized: string, tenant: string): Promise<SellerIdentity | null>;
-  issueChallenge(input: { id: string; emailNormalized: string; tenant: string; browserHash: string; codeHash: string; expiresAt: string }): Promise<void>;
-  findChallenge(id: string, tenant: string, browserHash: string, now: Date): Promise<SellerChallenge | null>;
-  consumeChallenge(input: { id: string; tenant: string; browserHash: string; candidateHash: string; sessionHash: string; now: Date }): Promise<SellerIdentity | null>;
-  findSellerSession(sessionHash: string, tenant: string, now: Date): Promise<SellerIdentity | null>;
-  revokeSellerSession(sessionHash: string, tenant: string): Promise<void>;
+  findSellerForUser(userId: string, tenant: string): Promise<SellerIdentity | null>;
   findSellerAccount(sellerId: string, tenant: string): Promise<SellerAccount | null>;
   ensureSellerAccountSlot(sellerId: string, tenant: string): Promise<PendingSellerAccount>;
   saveSellerAccount(sellerId: string, tenant: string, accountId: string, createKey: string): Promise<void>;

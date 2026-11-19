@@ -33,25 +33,17 @@ test('account slot and refresh adapter preserve tenant, creation key and fencing
   assert.equal(await store.findAccountById('acct_fixture', 'local'), null); assert.equal(calls[4].url.searchParams.get('tenant'), 'eq.local'); assert.equal(calls[4].url.searchParams.get('account_id'), 'eq.acct_fixture');
 });
 
-test('seller proof adapter scopes private reads and RPC arguments', async () => {
-  const calls: Array<{ url: URL; body: Record<string, unknown> | null }> = [];
-  const db = createClient('http://127.0.0.1:54321', 'test-only', { global: { fetch: async (input, init) => {
-    const url = new URL(String(input)); calls.push({ url, body: init?.body ? JSON.parse(String(init.body)) : null });
-    if (url.pathname.endsWith('marketplace_consume_seller_challenge')) return Response.json({ id: 'seller', tenant: 'local', email_normalized: 'seller@example.invalid' });
-    return Response.json(null);
+test('seller lookup scopes the account ID and tenant', async () => {
+  let url = new URL('http://localhost');
+  const db = createClient('http://127.0.0.1:54321', 'test-only', { global: { fetch: async input => {
+    url = new URL(String(input));
+    return Response.json([{ id: 'seller', tenant: 'local' }]);
   } } });
-  const store = createPaymentStore(db); const now = new Date('2026-11-17T00:00:00Z');
-  await store.issueChallenge({ id: 'challenge', emailNormalized: 'seller@example.invalid', tenant: 'local', browserHash: 'browser', codeHash: 'code', expiresAt: now.toISOString() });
-  assert.equal(calls[0].url.pathname, '/rest/v1/rpc/marketplace_issue_seller_challenge'); assert.equal(calls[0].body?.p_browser_hash, 'browser'); assert.equal(calls[0].body?.p_tenant, 'local');
-  assert.deepEqual(await store.consumeChallenge({ id: 'challenge', tenant: 'local', browserHash: 'browser', candidateHash: 'candidate', sessionHash: 'session', now }), { id: 'seller', tenant: 'local', emailNormalized: 'seller@example.invalid' });
-  assert.equal(calls[1].body?.p_candidate_hash, 'candidate'); assert.equal(calls[1].body?.p_now, now.toISOString());
-  assert.equal(await store.findChallenge('challenge', 'local', 'browser', now), null);
-  const query = calls[2].url.searchParams;
-  for (const [k, v] of Object.entries({ id: 'eq.challenge', tenant: 'eq.local', browser_nonce_hash: 'eq.browser', attempts: 'lt.5', consumed_at: 'is.null', expires_at: `gt.${now.toISOString()}` })) assert.equal(query.get(k), v);
-  assert.equal(await store.findSellerSession('session', 'local', now), null);
-  assert.equal(calls[3].url.searchParams.get('tenant'), 'eq.local'); assert.equal(calls[3].url.searchParams.get('token_hash'), 'eq.session');
-  await store.revokeSellerSession('session', 'local'); assert.equal(calls[4].url.searchParams.get('tenant'), 'eq.local');
-  await store.findSellerAccount('seller', 'local'); assert.equal(calls[5].url.searchParams.get('seller_id'), 'eq.seller'); assert.equal(calls[5].url.searchParams.get('tenant'), 'eq.local');
+  assert.deepEqual(await createPaymentStore(db).findSellerForUser('user', 'local'), { id: 'seller', tenant: 'local' });
+  assert.equal(url.pathname, '/rest/v1/marketplace_payment_sellers');
+  assert.equal(url.searchParams.get('user_id'), 'eq.user');
+  assert.equal(url.searchParams.get('tenant'), 'eq.local');
+  assert.equal(url.searchParams.get('select'), 'id,tenant');
 });
 test('paid receipt query requires completed paid webhook and tenant predicates', async () => {
   let query = new URL('http://localhost');

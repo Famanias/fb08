@@ -1,5 +1,9 @@
 export type PaymentAvailability = 'unavailable' | 'ready' | 'reserved' | 'sold';
 export type PublicPaymentState = { sandbox: boolean; availability: PaymentAvailability };
+export type SellerPaymentStatus = {
+  paymentsEnabled: boolean;
+  connection: 'sign_in_required' | 'listing_required' | 'not_connected' | 'pending' | 'ready' | 'restricted';
+};
 export type CheckoutLaunch = { orderId: string; url: string; expired?: true };
 export type OrderConfirmation = {
   orderId: string; listingId: string; title: string;
