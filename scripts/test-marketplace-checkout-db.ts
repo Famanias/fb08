@@ -36,7 +36,7 @@ async function main() {
       assert.equal(options.stripeAccount, accountId); assert.equal(options.apiVersion, '2026-10-28.endive');
       let session = sessions.get(options.idempotencyKey!);
       if (!session) {
-        session = { id: `cs_test_${randomBytes(12).toString('hex')}`, object: 'checkout.session', status: 'open', payment_status: 'unpaid', livemode: false, currency: 'php', amount_total: 123450, payment_intent: null, expires_at: params.expires_at, client_reference_id: params.client_reference_id, metadata: params.metadata, url: 'https://checkout.stripe.com/c/pay/fixture', line_items: { data: [{ quantity: 1 }], has_more: false } } as unknown as Stripe.Checkout.Session;
+        session = { id: `cs_test_${randomBytes(12).toString('hex')}`, object: 'checkout.session', status: 'open', payment_status: 'unpaid', livemode: false, currency: 'php', amount_total: 123450, payment_intent: null, expires_at: params.expires_at, client_reference_id: params.client_reference_id, metadata: params.metadata, url: 'https://checkout.stripe.com/c/pay/fixture', payment_method_types: ['card', 'link'], wallet_options: params.wallet_options, line_items: { data: [{ quantity: 1 }], has_more: false } } as unknown as Stripe.Checkout.Session;
         sessions.set(options.idempotencyKey!, session);
       }
       if (loseCreate) { loseCreate = false; throw new Error('Accepted create response lost'); }

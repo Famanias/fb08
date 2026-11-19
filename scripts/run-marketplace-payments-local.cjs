@@ -35,6 +35,7 @@ async function setup(docker) {
     '20261117095439_marketplace_payment_reconciliation.sql', '20261117102524_marketplace_payment_presentation.sql',
     '20261118151539_marketplace_account_sellers.sql',
     '20261118223225_marketplace_connect_v2_account_creation.sql',
+    '20261119002749_marketplace_dynamic_card_checkout.sql',
   ]) sql(readFileSync(`supabase/migrations/${name}`, 'utf8'));
   sql('grant select, insert, delete on public.board_users to service_role;');
   const extraEnv = { PGRST_JWT_SECRET: randomBytes(48).toString('base64url') };
@@ -53,7 +54,7 @@ async function main() {
   const env = ownedRest.Config.Env;
   const secret = env.find(value => value.startsWith('PGRST_JWT_SECRET='))?.slice('PGRST_JWT_SECRET='.length);
   if (!secret) throw new Error('Local JWT configuration missing.');
-  for (const file of ['marketplace.sql', 'marketplace-payments.sql', 'marketplace-seller-proof.sql', 'marketplace-connect.sql', 'marketplace-payment-reconciliation.sql', 'marketplace-payment-presentation.sql', 'marketplace-account-sellers.sql']) {
+  for (const file of ['marketplace.sql', 'marketplace-payments.sql', 'marketplace-seller-proof.sql', 'marketplace-connect.sql', 'marketplace-payment-reconciliation.sql', 'marketplace-payment-presentation.sql', 'marketplace-account-sellers.sql', 'marketplace-dynamic-card-checkout.sql']) {
     sql(readFileSync(`supabase/tests/${file}`, 'utf8')); console.log(`PASS: rolled-back ${file}`);
   }
   const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');

@@ -81,6 +81,21 @@ test('direct Checkout creates verbatim durable snapshot using account, original 
   await assert.rejects(f.gateway.createCheckout({ ...f.order, tenant: 'foreign' }));
   await assert.rejects(f.gateway.createCheckout({ ...f.order, accountId: 'bad' })); assert.equal(f.calls.length, 2);
 });
+test('a dynamic Stripe Checkout cannot expose a URL with an unexpected payment method', async () => {
+  const f = checkoutFixture();
+  const walletOptions = { link: { display: 'never' as const } };
+  const snapshot: Record<string, unknown> = { ...f.order.createParams, excluded_payment_method_types: ['paypal', 'us_bank_account'], wallet_options: walletOptions };
+  delete snapshot.payment_method_types;
+  const order = { ...f.order, createParams: snapshot };
+  f.setSession({ payment_method_types: ['card', 'us_bank_account'], wallet_options: walletOptions });
+  await assert.rejects(f.gateway.createCheckout(order));
+  await assert.rejects(f.gateway.readCheckout(order, 'cs_test_fixture'));
+  f.setSession({ payment_method_types: ['card', 'link'], wallet_options: { link: { display: 'auto' } } });
+  await assert.rejects(f.gateway.createCheckout(order));
+  f.setSession({ payment_method_types: ['card', 'link'], wallet_options: walletOptions });
+  assert.equal((await f.gateway.createCheckout(order)).url, 'https://checkout.stripe.com/c/pay/fixture');
+  assert.equal((await f.gateway.readCheckout(order, 'cs_test_fixture')).url, 'https://checkout.stripe.com/c/pay/fixture');
+});
 
 test('canonical Checkout retrieval is account/version scoped and never treats inaccessible PI as absent', async () => {
   const f = checkoutFixture();

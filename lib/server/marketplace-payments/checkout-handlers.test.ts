@@ -52,7 +52,10 @@ test('checkout_uses_sql_snapshot_and_connected_account', async () => {
   assert.deepEqual(await res.json(), { orderId: f.orders[0].id, url: 'https://checkout.stripe.com/c/pay/fixture' });
   const o = f.calls.creates[0]; const m = { fb08_app: 'marketplace-payments-v1', tenant: 'local', order_id: o.id, listing_id: f.listingId };
   assert.equal(o.accountId, 'acct_fixture');
-  assert.deepEqual(o.createParams, { mode: 'payment', payment_method_types: ['card'], client_reference_id: o.id, expires_at: 1794875460, metadata: m, line_items: [{ quantity: 1, price_data: { currency: 'php', unit_amount: 123450, product_data: { name: 'Fictional item safe title' } } }], payment_intent_data: { application_fee_amount: 12345, metadata: m }, success_url: `https://market.example.invalid/marketplace/orders/${o.id}`, cancel_url: `https://market.example.invalid/marketplace/${f.listingId}`, automatic_tax: { enabled: false }, adaptive_pricing: { enabled: false }, allow_promotion_codes: false, after_expiration: { recovery: { enabled: false } } });
+  const { excluded_payment_method_types: excluded, ...snapshot } = o.createParams;
+  assert.ok(Array.isArray(excluded));
+  assert.ok(excluded.includes('us_bank_account') && excluded.includes('paypal') && !excluded.includes('card'));
+  assert.deepEqual(snapshot, { mode: 'payment', wallet_options: { link: { display: 'never' } }, client_reference_id: o.id, expires_at: 1794875460, metadata: m, line_items: [{ quantity: 1, price_data: { currency: 'php', unit_amount: 123450, product_data: { name: 'Fictional item safe title' } } }], payment_intent_data: { application_fee_amount: 12345, metadata: m }, success_url: `https://market.example.invalid/marketplace/orders/${o.id}`, cancel_url: `https://market.example.invalid/marketplace/${f.listingId}`, automatic_tax: { enabled: false }, adaptive_pricing: { enabled: false }, allow_promotion_codes: false, after_expiration: { recovery: { enabled: false } } });
 });
 
 test('buyer_cookie_precedes_checkout and bootstrap preserves earlier purchase capability', async () => {

@@ -31,6 +31,12 @@ export function assertCheckoutUrl(value: string): void {
   const url = new URL(value);
   if (url.protocol !== 'https:' || url.hostname !== 'checkout.stripe.com' || url.port || url.username || url.password) throw new Error('Checkout unavailable.');
 }
+function assertCardCheckout(order: StoredOrder, session: Stripe.Checkout.Session): void {
+  if (!order.createParams?.wallet_options) return;
+  const types = session.payment_method_types;
+  if (!types?.includes('card') || types.some(type => type !== 'card' && type !== 'link')
+    || session.wallet_options?.link?.display !== 'never') throw new Error('Checkout unavailable.');
+}
 export function createStripeGateway(config: { secretKey: string; tenant: string; country: string; origin: string; webhookSecret?: string }, injected?: PaymentSdk, now: () => Date = () => new Date()): StripeGateway {
   // Signed-out status can be served without constructing a Stripe client.
   let sdk = injected;
@@ -89,6 +95,7 @@ export function createStripeGateway(config: { secretKey: string; tenant: string;
       // The strict database validator owns this immutable JSON snapshot. Do not rebuild it here.
       const session = await client().checkout.sessions.create(order.createParams as Stripe.Checkout.SessionCreateParams, { ...options, idempotencyKey: order.createKey });
       if (!/^cs_[A-Za-z0-9_]{1,200}$/.test(session.id) || session.livemode !== false || !session.url) throw new Error('Checkout unavailable.');
+      assertCardCheckout(order, session);
       assertCheckoutUrl(session.url);
       return { sessionId: session.id, url: session.url };
     },
@@ -165,6 +172,7 @@ export function createStripeGateway(config: { secretKey: string; tenant: string;
       if (!id || !/^cs_[A-Za-z0-9_]{1,200}$/.test(id)) throw new Error('Checkout unavailable.');
       const session = await client().checkout.sessions.retrieve(id, { expand: ['line_items', 'payment_intent'] }, options);
       if (session.id !== id || !['open', 'complete', 'expired'].includes(session.status ?? '')) throw new Error('Checkout unavailable.');
+      if (session.status === 'open' && session.url) assertCardCheckout(order, session);
       let intent: Stripe.PaymentIntent | null = null;
       if (typeof session.payment_intent === 'string') {
         if (!/^pi_[A-Za-z0-9_]{1,200}$/.test(session.payment_intent)) throw new Error('Checkout unavailable.');
