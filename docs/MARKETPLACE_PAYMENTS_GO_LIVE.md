@@ -4,11 +4,23 @@ The launch target is **public hosting with Stripe sandbox payments** at `https:/
 
 ## Rollout status on November 19, 2026
 
-**Preview completed an end-to-end sandbox purchase. Public sandbox payments remain disabled pending approval and Production configuration.**
+**Stripe sandbox payments are enabled and verified end to end on the public Marketplace. Preview also passed its own sandbox purchase.**
+
+### Public cutover
+
+| Area | Verified result |
+| --- | --- |
+| Release | PR #3 merged at `e66104e9e4c68075cd82b33a7b2df418d33dd80c`. Production deployment `dpl_AsW3cvHGWhu4LWy6mdtCmisgpNHB` serves `https://fb08.vercel.app` and reports `paymentsEnabled=true` in tenant `fb08-stripe-production`. The payments-disabled recovery deployment for the same commit is `dpl_GMBsBofFuDULrYFCrwmfSZMDAFaU`. |
+| Stripe webhook | One enabled Connect Snapshot destination in the owner’s sandbox points to the public endpoint, with a Production-only signing secret. The public endpoint returned `200` for Stripe’s `account.updated` at 04:32 UTC and `checkout.session.completed` at 08:22 UTC. Unsigned requests returned `400`. |
+| Marketplace | The public smoke test passed listing creation, image upload, inquiries, Board, People and auth and removed its temporary fixtures. A guest buyer session returned `204`, and Checkout for a demo returned `409`. |
+| Public seller | A signed-in fb/08 test seller completed Stripe-hosted US sandbox onboarding in a regular Brave window. Stripe enabled charges and payouts, activated card payments, and cleared all outstanding and pending requirements. The fictional listing then showed **Buy Now**. |
+| Public purchase | One guest order paid **₱1,234.50** using a Stripe test card and recorded a **₱123.45** platform fee. The webhook created the paid receipt and marked the listing Sold. The read-only payment verifier confirmed the connected charge, signed webhook receipt and simulated settlement fees. The original buyer session showed **Sandbox payment confirmed**. The order page and API returned `404` without its buyer cookie. The [Sold listing](https://fb08.vercel.app/marketplace/86c7c602-1e2f-4800-876d-fef381f9f105) still opens and is absent from the active feed. |
+
+### Preview verification
 
 | Area | Completed and verified |
 | --- | --- |
-| Production release | The existing Vercel project `fb08` serves `Famanias/fb08` from `main` at `8da7243a2478643cd2e0580fb5eaba03971c24c4`. The current deployment, `fb08-mdwsmqzf3-team-e2117dad.vercel.app`, is the pre-enablement Vercel recovery point. Payments are disabled by default in this build. |
+| Pre-cutover release | Before PR #3 merged, the public site served `8da7243a2478643cd2e0580fb5eaba03971c24c4` at `fb08-mdwsmqzf3-team-e2117dad.vercel.app` with payments disabled. Use the same-commit recovery deployment listed above if payments need to be paused after cutover. |
 | Hosted database | All seven payment migrations in [step 3](#3-apply-the-payment-migrations-to-the-authorized-supabase-target) are recorded as applied in the shared Supabase project. Verified tenant-scoped ownership, private tables, and service-only Checkout, publication and account-slot RPCs. The seventh migration's internal commit applied it during a planned rollback check, with Preview purchasing paused. The installed function matched the reviewed file, and the standalone rollback assertions passed before the ledger was recorded. The encrypted pre-ownership backup and the prior Checkout function definition are under `%LOCALAPPDATA%\fb08\marketplace-recovery`. A restore drill remains pending. |
 | Existing Marketplace | The public listing detail changed from HTTP `500` to `200` after the schema update. The feed and image loaded, and Board, People, and session check routes returned `200`. The exact-manifest classifier verified 21 demo listings and zero missing fixtures after classification. Demos are inquiry-only. |
 | Preview deployment | `Famanias/stripe-connect-payments-plan` at `1bc52f31c1671d6b6bf679bff2c4e9e87cbd7577` deployed as `dpl_GootQpYtgjrtVoBooqyPydonkCj3`. Payments are enabled in tenant `fb08-stripe-preview`. The disabled Preview recovery deployment is `dpl_DqiGNQQ3CZ1MyGRTFbaiVXkMvHb7`. A Vercel Deployment Protection Exception applies to the stable branch domain. |
@@ -18,18 +30,15 @@ The launch target is **public hosting with Stripe sandbox payments** at `https:/
 | Checkout compatibility | Stripe rejected a Checkout request using `payment_method_types`. Its original reservation and request remain recorded without a Stripe session, and its listing was retired. New sessions use Stripe's dynamic payment methods with non-card methods excluded and Link hidden. The app verifies the returned configuration before giving the buyer the Checkout URL. [Stripe Checkout Session parameters](https://docs.stripe.com/api/checkout/sessions/create) |
 | Paid purchase and webhook | A guest in a private Brave window paid **₱1,234.50** with a Stripe test card. The verified direct charge included a **₱123.45** platform fee and **₱1,111.05** before processing fees. Stripe's USD settlement showed **$19.39 gross**, **$1.94 platform fee**, **$1.05 processing fee** and **$16.40 net**. Stripe's automatic `checkout.session.completed` delivery received HTTP `200` at 00:40 UTC. The read-only verifier confirmed the succeeded payment, one paid order, the signed receipt, Sold status and settlement fees. The buyer saw **Sandbox payment confirmed**. The [Sold listing](https://fb08-git-famanias-stripe-connect-payments-plan-team-e2117dad.vercel.app/marketplace/647bc59c-b52b-4c38-b68a-b6e0cf5f2404) still opens and is absent from the active feed. |
 | Checkout privacy and concurrency | The paid order page and API returned `404` without the buyer cookie. Concurrent guest requests produced one `201` and one `409`. The winning guest resumed the same Stripe session. An automatic `checkout.session.expired` delivery released that unpaid hold, and the fixture was retired. A signed replay of the Stripe-retrieved completion event returned `200` and left the sale and receipt unchanged. |
-| Production preflight | The public Marketplace, listing details and images, Board, People, and session reads passed. All seven migrations are applied and the private tables and RPCs remain restricted. The public site still serves `8da7243` and needs its own payment environment settings and Connect webhook. The 21 demo listings remain inquiry-only. |
+| Public inventory preflight | The public Marketplace, listing details and images, Board, People, and session reads passed. All seven migrations are applied and the private tables and RPCs remain restricted. The 21 demo listings remain inquiry-only. |
 | Code and regression checks | The Checkout revision passed 139 tests, lint, typecheck, a production build and the hosted rollback-only SQL assertions for the installed function. The hosted smoke test passed Marketplace publication and image upload, browsing, detail, inquiries, privacy, Board, People and auth. It removed its temporary fixtures. |
 | Dependency audit | The installed Next.js version includes a transitive PostCSS dependency with high-severity advisories involving untrusted CSS input. Review and update the dependency in a separately tested change. [PostCSS advisory](https://github.com/advisories/GHSA-r28c-9q8g-f849) |
 
 **Stable Preview origin** is `https://fb08-git-famanias-stripe-connect-payments-plan-team-e2117dad.vercel.app`.
 
-### Remaining work
+### Assessment submission
 
-1. After the owner approves cutover, deploy the tested revision to Production with payments disabled. Configure tenant `fb08-stripe-production`, the public origin, the authorized sandbox keys, and a separate Production webhook and signing secret. Verify reachability and run the disabled smoke checks. See [step 6](#6-release-to-the-public-site-after-preview-passes).
-2. Enable the Production switch and redeploy. Create a new production-tenant fictional listing and complete a separate seller connection and sandbox purchase on the public origin. Verify its signed paid receipt, Sold status, and private confirmation.
-
-The assessment asks candidates to use its supplied sandbox keys. The project owner's sandbox is configured for Preview testing. Confirm with the assessor before submitting evidence generated with that sandbox. [Assessment instructions](https://tremendous-tiger-a4a.notion.site/Test-4-Stripe-Connect-41400bbdfc3b80a2909add50ab807591)
+The assessment asks candidates to use its supplied sandbox keys. Both successful purchases used the project owner's sandbox. Confirm with the assessor before submitting that evidence. [Assessment instructions](https://tremendous-tiger-a4a.notion.site/Test-4-Stripe-Connect-41400bbdfc3b80a2909add50ab807591)
 
 ## 1. What you provide and what your agent does
 
